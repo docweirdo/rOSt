@@ -1,0 +1,55 @@
+{
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "C/C++: arm-none-eabi-gcc build active file",
+            "command": "/usr/bin/arm-none-eabi-gcc",
+            "args": [
+                "-Wall",
+                "-Wextra", 
+                "-ffreestanding", 
+                "-mcpu=arm920t", 
+                "-O2", 
+                "-c",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}",
+                "${fileDirname}/${fileBasename}"
+            ],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": "C/C++: arm-none-eabi-ld link files",
+            "detail": "Handmade by docweirdo"
+        },
+        {
+            "type": "shell",
+            "label": "C/C++: arm-none-eabi-ld link files",
+            "command": "/usr/bin/arm-none-eabi-ld",
+            "args": [
+                "-T${fileDirname}/kernel.lds",
+                "-o",
+                "${fileDirname}/kernel",
+                "${fileDirname}/${fileBasenameNoExtension}.o"
+            ],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Handmade by docweirdo"
+        }
+    ],
+    "version": "2.0.0"
+}

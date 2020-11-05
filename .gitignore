@@ -1,3 +1,4 @@
+qemu-system-arm
 **/*.rs.bk
 .#*
 .gdb_history
