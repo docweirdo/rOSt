@@ -2,22 +2,11 @@
     "tasks": [
         {
             "type": "shell",
-            "label": "C/C++: arm-none-eabi-gcc build active file",
-            "command": "/usr/bin/arm-none-eabi-gcc",
+            "label": "Rust: Compile",
+            "command": "~/.cargo/bin/cargo",
             "args": [
-                "-Wall",
-                "-Wextra", 
-                "-ffreestanding", 
-                "-mcpu=arm920t", 
-                "-O2", 
-                "-c",
-                "-o",
-                "${fileDirname}/${fileBasenameNoExtension}",
-                "${fileDirname}/${fileBasename}"
+                "build"
             ],
-            "options": {
-                "cwd": "/usr/bin"
-            },
             "problemMatcher": [
                 "$gcc"
             ],
@@ -25,32 +14,35 @@
                 "kind": "build",
                 "isDefault": true
             },
-            "dependsOn": "C/C++: arm-none-eabi-ld link files",
             "detail": "Handmade by docweirdo"
         },
         {
             "type": "shell",
-            "label": "C/C++: arm-none-eabi-ld link files",
-            "command": "/usr/bin/arm-none-eabi-ld",
+            "label": "qemu: run qemu with rost",
+            "command": "${workspaceFolder}/qemu-system-arm-portux-fork",
             "args": [
-                "-T${fileDirname}/kernel.lds",
-                "-o",
-                "${fileDirname}/kernel",
-                "${fileDirname}/${fileBasenameNoExtension}.o"
+                "-M",
+                "portux920t",
+                "-m",
+                "64M",
+                "-nographic",
+                "-kernel",
+                "${workspaceFolder}/target/thumbv4t-none-eabi/debug/rost",
+                "-s",
+                "-S"
             ],
-            "options": {
-                "cwd": "/usr/bin"
-            },
-            "problemMatcher": [
-                "$gcc"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "detail": "Handmade by docweirdo"
+            "dependsOn": "Rust: Compile",
+            "detail": "Handmade by docweirdo",
+            "problemMatcher": []
         },
-        
+        {
+            "label": "postdebugKill",
+            "type": "process",
+            "command": [
+                "${command:workbench.action.tasks.terminate}",
+                "${command:workbench.action.acceptSelectedQuickOpenItem}"
+            ]
+        }
     ],
     "version": "2.0.0"
 }

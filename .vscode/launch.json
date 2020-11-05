@@ -5,114 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "arm-none-eabi-gcc - Build and debug active file",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${fileDirname}/qemu-system-arm",
-            "args": [
-                "-M",
-                "portux920t",
-                "-m",
-                "64M",
-                "-nographic",
-                "-kernel",
-                "${fileDirname}/kernel",
-                "-s",
-                "-S"
-            ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "--nh",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "-ex",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "'set architecutre arm'",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "-ex",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "'file kernel'",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "-ex",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "'target remote localhost:1234'",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "-ex",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "'layout split'",
-                    "ignoreFailures": true
-                },
-
-            ],
-            "preLaunchTask": "C/C++: arm-none-eabi-gcc build active file",
-            "miDebuggerPath": "/usr/bin/gdb-multiarch"
-        },
-        {
-            "name": "arm-none-eabi-gcc Attach Debugger",
-            "type": "cppdbg",
+            "type": "gdb",
             "request": "attach",
-            "program": "${workspaceFolder}/target/thumbv4t-none-eabi/debug/rost",
-            "MIMode": "gdb",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "--nh",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "-ex",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "'set architecutre arm'",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "-ex",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "'file kernel'",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "-ex",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "'target remote localhost:1234'",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "-ex",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "'layout split'",
-                    "ignoreFailures": true
-                }
-            ]
-        },
+            "name": "Attach to QEMU",
+            "executable": "${workspaceFolder}/target/thumbv4t-none-eabi/debug/rost",
+            "target": "localhost:1234",
+            "remote": true,
+            "cwd": "${workspaceRoot}", 
+            "gdbpath": "/usr/bin/gdb-multiarch",
+        }
     ]
 }
