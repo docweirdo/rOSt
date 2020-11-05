@@ -1,0 +1,24 @@
+[package]
+authors = ["Karl Skomski <karl@skomski.com>"]
+edition = "2018"
+readme = "README.md"
+name = "rost"
+version = "0.1.0"
+
+[dependencies]
+
+# this lets you use `cargo fix`!
+[[bin]]
+name = "rost"
+test = false
+bench = false
+
+[profile.release]
+codegen-units = 1 # better optimizations
+debug = true # symbols are nice and they don't increase the size on Flash
+lto = true # better optimizations
+panic = "abort" # disable stack unwinding on panic
+
+# the profile used for `cargo build`
+[profile.dev]
+panic = "abort" # disable stack unwinding on panic
