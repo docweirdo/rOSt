@@ -67,6 +67,52 @@
             ],
             "preLaunchTask": "C/C++: arm-none-eabi-gcc build active file",
             "miDebuggerPath": "/usr/bin/gdb-multiarch"
-        }
+        },
+        {
+            "name": "arm-none-eabi-gcc Attach Debugger",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/target/thumbv4t-none-eabi/debug/rost",
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "--nh",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "-ex",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "'set architecutre arm'",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "-ex",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "'file kernel'",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "-ex",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "'target remote localhost:1234'",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "-ex",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "'layout split'",
+                    "ignoreFailures": true
+                }
+            ]
+        },
     ]
 }
