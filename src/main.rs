@@ -55,10 +55,7 @@ const DBGU_TXRDY: u32 = 1<<1;
 pub unsafe extern "C" fn _start() -> ! {
     // this function is the entry point, since the linker looks for a function
     // named `_start` by default
-    let a = 1;
-    let b = 2;
-    let c = 3;
-
+    
     uart_setup();
 
     loop{
@@ -69,29 +66,26 @@ pub unsafe extern "C" fn _start() -> ! {
 pub unsafe fn uart_setup() {
 
     //Disable PIO Controll
-    write_volatile(PIO_A.offset(PIO_PDR), DBGU_TX);
-    write_volatile(PIO_A.offset(PIO_PDR), DBGU_RX);
+    write_volatile(PIO_A.offset(PIO_PDR/4), DBGU_TX | DBGU_RX);
 
     //Set Periphal A
-    write_volatile(PIO_A.offset(PIO_ASR), DBGU_TX);
-    write_volatile(PIO_A.offset(PIO_ASR), DBGU_RX);
+    write_volatile(PIO_A.offset(PIO_ASR/4), DBGU_TX | DBGU_RX);
 
     //Disable Pull up
-    write_volatile(PIO_A.offset(PIO_PUDR), DBGU_TX);
-    write_volatile(PIO_A.offset(PIO_PUDR), DBGU_RX);
+    write_volatile(PIO_A.offset(PIO_PUDR/4), DBGU_TX | DBGU_RX);
 
     //Enable DBGU
-    write_volatile(DBGU.offset(DBGU_CR), DBGU_TX);
+    write_volatile(DBGU.offset(DBGU_CR/4), DBGU_TX);
 
     //Set Baudrate
-    write_volatile(DBGU.offset(DBGU_BRGR), 0x01);
-
+    write_volatile(DBGU.offset(DBGU_BRGR/4), 65536);
+    
 }
 
 pub unsafe fn print_char() {
 
-    if (read_volatile(DBGU.offset(DBGU_SR)) ^ DBGU_TXRDY) != 0 {
-        write_volatile(DBGU.offset(DBGU_THR), 67);
+    if (read_volatile(DBGU.offset(DBGU_SR/4)) ^ DBGU_TXRDY) != 0 {
+        write_volatile(DBGU.offset(DBGU_THR/4), 65);
     }
 
 }
