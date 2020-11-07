@@ -95,6 +95,12 @@ pub unsafe extern "C" fn _start() -> ! {
     // named `_start` by default
     // uart_setup();
 
+    //Test Enabling PIO Controll
+    write_volatile(PIO_A, DBGU_TX | DBGU_RX);
+
+    //Test Turning Baud Rate off
+    write_volatile(DBGU.offset(DBGU_BRGR / 4), 0);
+
     println!(
         "{} {}: the start",
         env!("CARGO_PKG_NAME"),
@@ -152,5 +158,10 @@ pub unsafe fn eval_check() {
 /// This function is called on panic.
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
+
+    unsafe{
+        println!("Kernel Panic!!! Jump ship!");
+    }
+
     loop {}
 }
