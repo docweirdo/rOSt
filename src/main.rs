@@ -27,16 +27,20 @@ macro_rules! println {
     })
 }
 
-pub unsafe fn send_str(chars: &str) {
+pub fn send_str(chars: &str) {
     for character in chars.chars() {
         send_char(character);
     }
 }
 
-pub unsafe fn send_char(character: char) {
-    if (read_volatile(DBGU.offset(DBGU_SR / 4)) & DBGU_TXRDY) != 0 {
-        write_volatile(DBGU.offset(DBGU_THR / 4), character as u32);
+pub fn send_char(character: char) {
+
+    unsafe{
+        if (read_volatile(DBGU.offset(DBGU_SR / 4)) & DBGU_TXRDY) != 0 {
+            write_volatile(DBGU.offset(DBGU_THR / 4), character as u32);
+        }
     }
+    
 }
 
 //
@@ -159,9 +163,7 @@ pub unsafe fn eval_check() {
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
 
-    unsafe{
-        println!("Kernel Panic!!! Jump ship!");
-    }
+    println!("Kernel Panic!!! Jump ship!");
 
     loop {}
 }
