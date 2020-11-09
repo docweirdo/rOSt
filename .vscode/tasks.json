@@ -3,7 +3,7 @@
         {
             "type": "shell",
             "label": "Rust: Compile",
-            "command": "~/.cargo/bin/cargo",
+            "command": "cargo",
             "args": [
                 "build"
             ],
@@ -19,7 +19,7 @@
         {
             "type": "shell",
             "label": "qemu: run qemu with rost",
-            "command": "${workspaceFolder}/qemu-system-arm-portux-fork",
+            "command": "qemu-system-arm-portux-fork",
             "args": [
                 "-M",
                 "portux920t",
