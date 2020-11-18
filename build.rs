@@ -8,6 +8,7 @@
 //! updating `memory.x` ensures a rebuild of the application with the
 //! new memory settings.
 
+use cc::Build;
 use std::env;
 use std::fs::File;
 use std::io::Write;
@@ -28,4 +29,10 @@ fn main() {
     // here, we ensure the build script is only re-run when
     // `memory.x` is changed.
     println!("cargo:rerun-if-changed=memory.x");
+
+    // assemble the `asm.s` file
+    Build::new().file("asm.s").compile("asm"); // <- NEW!
+
+    // rebuild if `asm.s` changed
+    println!("cargo:rerun-if-changed=asm.s"); // <- NEW!
 }

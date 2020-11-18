@@ -1,26 +1,43 @@
 #![no_std]
 #![no_main]
+#![feature(asm)]
 
 use arrayvec::ArrayString;
 use core::fmt::Write;
 use core::panic::PanicInfo;
+use core::ptr::{read_volatile, write_volatile};
 
 mod dbgu;
 mod fmt;
 
 #[no_mangle]
-pub extern "C" fn _start() -> ! {
-    println!(
-        "{} {}: the start",
-        env!("CARGO_PKG_NAME"),
-        env!("CARGO_PKG_VERSION")
-    );
+pub extern "C" fn _irq_handler() -> ! {
+    println!("interrupt handler");
+    loop {}
+}
 
-    // printf statement
-    println!(
-        "{} {:#X} {} PIO_A: {:p}",
-        "Hello", 0x8BADF00D as u32, 'c', 0xFFFFF400 as *mut u32
-    );
+#[no_mangle]
+pub extern "C" fn _start() -> ! {
+    // println!(
+    //     "{} {}: the start",
+    //     env!("CARGO_PKG_NAME"),
+    //     env!("CARGO_PKG_VERSION")
+    // );
+
+    // // printf statement
+    // println!(
+    //     "{} {:#X} {} PIO_A: {:p}",
+    //     "Hello", 0x8BADF00D as u32, 'c', 0xFFFFF400 as *mut u32
+    // );
+
+    //println!("write register");
+
+    unsafe {
+        //asm!("bx lr");
+        // asm!(".word 0xf7f0a000");
+        asm!("swi #0");
+        //write_volatile(0xFFFFFFFF as *mut u32, 0x1);
+    }
 
     println!("waiting for input... (press ENTER to echo)");
 
@@ -71,5 +88,41 @@ pub fn eval_check() -> bool {
 fn panic(_info: &PanicInfo) -> ! {
     println!("Kernel Panic!!! Jump ship!");
 
+    loop {}
+}
+
+// The reset handler
+#[no_mangle]
+unsafe extern "C" fn ResetHandler() -> ! {
+    let _x = 42;
+
+    // can't return so we go into an infinite loop here
+    loop {}
+}
+
+// The reset handler
+#[no_mangle]
+unsafe extern "C" fn UndefinedInstruction() -> ! {
+    let _x = 43;
+
+    // can't return so we go into an infinite loop here
+    loop {}
+}
+
+// The reset handler
+#[no_mangle]
+unsafe extern "C" fn SoftwareInterrupt() -> ! {
+    let _x = 43;
+
+    // can't return so we go into an infinite loop here
+    loop {}
+}
+
+// The reset handler
+#[no_mangle]
+unsafe extern "C" fn PrefetchAbort() -> ! {
+    let _x = 44;
+
+    // can't return so we go into an infinite loop here
     loop {}
 }

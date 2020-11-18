@@ -1,6 +1,18 @@
 ENTRY(_start)
-SECTIONS { 
+
+EXTERN(ExceptionsJump)
+
+SECTIONS
+{
+
+   . = 0x00000000;
+  .vector_table :
+  {
+      *(.ExceptionsJump);
+      *(.ExceptionsTrampolines);
+  }
    . = 0x20000000;
-   .init : { *(.init) }
-   .text : { *(.text) } 
+   .text : {
+      *(.text);
+  } 
 }
