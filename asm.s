@@ -7,7 +7,7 @@ ExceptionsJump:
 
 
 ResetTrampoline:
-  b ResetHandlerq
+  b ResetHandler
 
 UndefTrampoline:
   b UndefinedInstruction

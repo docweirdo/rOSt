@@ -1,18 +1,34 @@
-ENTRY(_start)
 
 EXTERN(ExceptionsJump)
+EXTERN(StartJump)
+
+ENTRY(_start)
+
+MEMORY {
+   BOOT : ORIGIN = 0x0, LENGTH = 1M
+   SRAM : ORIGIN = 0x00200000, LENGTH = 1M
+   SDRAM : ORIGIN = 0X20000000, LENGTH = 16M
+}
 
 SECTIONS
 {
 
-   . = 0x00000000;
   .vector_table :
   {
       *(.ExceptionsJump);
       *(.ExceptionsTrampolines);
-  }
-   . = 0x20000000;
+  } > BOOT
+
    .text : {
       *(.text);
-  } 
+  } > SDRAM 
+
+
+  /DISCARD/ :
+  {
+    /* Unused exception related info that only wastes space */
+    *(.ARM.exidx);
+    *(.ARM.exidx.*);
+    *(.ARM.extab.*);
+  }
 }

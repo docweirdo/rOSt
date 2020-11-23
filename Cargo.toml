@@ -20,9 +20,10 @@ bench = false
 [profile.release]
 codegen-units = 1 # better optimizations
 debug = true # symbols are nice and they don't increase the size on Flash
-lto = true # better optimizations
+lto = false # better optimizations
 panic = "abort" # disable stack unwinding on panic
 
 # the profile used for `cargo build`
 [profile.dev]
 panic = "abort" # disable stack unwinding on panic
+lto = false

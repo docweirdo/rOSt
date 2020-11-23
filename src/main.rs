@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(naked_functions)]
 #![feature(asm)]
 
 use arrayvec::ArrayString;
@@ -17,12 +18,21 @@ pub extern "C" fn _irq_handler() -> ! {
 }
 
 #[no_mangle]
+#[naked]
 pub extern "C" fn _start() -> ! {
-    // println!(
-    //     "{} {}: the start",
-    //     env!("CARGO_PKG_NAME"),
-    //     env!("CARGO_PKG_VERSION")
-    // );
+    unsafe {
+        asm!("ldr sp, =0x24000000");
+    }
+    boot();
+    loop {}
+}
+
+pub fn boot() {
+    println!(
+        "{} {}: the start",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    );
 
     // // printf statement
     // println!(
@@ -35,7 +45,7 @@ pub extern "C" fn _start() -> ! {
     unsafe {
         //asm!("bx lr");
         // asm!(".word 0xf7f0a000");
-        asm!("swi #0");
+        //  asm!("swi #0");
         //write_volatile(0xFFFFFFFF as *mut u32, 0x1);
     }
 
