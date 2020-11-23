@@ -1,16 +1,12 @@
 .section .ExceptionsJump, "ax"
   .global ExceptionsJump
 ExceptionsJump:
-  ldr pc, ResetTrampoline
-  ldr pc, UndefTrampoline
-  ldr pc, SWITrampoline
+  ldr pc, _SoftwareInterrupt
+  ldr pc, _SoftwareInterrupt
+  ldr pc, _SoftwareInterrupt
+  ldr pc, _SoftwareInterrupt
+  ldr pc, _SoftwareInterrupt
+  ldr pc, _SoftwareInterrupt
+  ldr pc, _SoftwareInterrupt
 
-
-ResetTrampoline:
-  b ResetHandler
-
-UndefTrampoline:
-  b UndefinedInstruction
-
-SWITrampoline:
-  b SoftwareInterrupt
+  _SoftwareInterrupt: .word SoftwareInterrupt

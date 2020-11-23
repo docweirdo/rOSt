@@ -3,30 +3,93 @@
 #![feature(naked_functions)]
 #![feature(asm)]
 
+#[macro_use]
+extern crate num_derive;
+
+use num_traits::{FromPrimitive, ToPrimitive};
+
 use arrayvec::ArrayString;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr::write_volatile;
+use log::{error, info};
 
 mod dbgu;
 mod fmt;
+mod logger;
 
-#[no_mangle]
-pub extern "C" fn _irq_handler() -> ! {
-    println!("interrupt handler");
-    loop {}
+// https://blog.rust-lang.org/inside-rust/2020/06/08/new-inline-asm.html
+// https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
+
+const SP_USER_SYSTEM_START: usize = 0x2FFFFF; // end of SRAM
+const SP_FIQ_START: usize = 0x2DFFFF; // 190KB + 1,99.. KB for each stack
+const SP_IRQ_START: usize = 0x2BFFFF;
+const SP_SVC_START: usize = 0x29FFFF;
+const SP_ABT_START: usize = 0x27FFFF;
+const SP_UND_START: usize = 0x25FFFF;
+
+#[repr(u8)]
+#[derive(FromPrimitive, ToPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
+enum ProcessorMode {
+    User = 0b10000,
+    FIQ = 0b10001,
+    IRQ = 0b10010,
+    Supervisor = 0b10011,
+    Abort = 0b10111,
+    Undefined = 0b11011,
+    System = 0b11111,
 }
 
-const SP_START: usize = 0x2FFFFF; // end of SDRAM
+fn get_mode() -> ProcessorMode {
+    let mut cpsr: u32 = 0;
+
+    unsafe {
+        asm!("MRS {0}, CPSR", out(reg) cpsr);
+    }
+
+    ProcessorMode::from_u8((cpsr & 0x1F) as u8).unwrap()
+}
+
+fn switch_mode(new_mode: ProcessorMode) {
+    // info!("Switching to processor mode {:?}", new_mode);
+
+    // if get_mode() == ProcessorMode::User {
+    //     error!("switch_mode: You can't escape from user mode");
+    // }
+
+    unsafe {
+        asm!(
+            "
+        MRS r0, cpsr
+        BIC r0, r0, #0x1F
+        ORR r0, r0, r1
+        MSR cpsr_c, r0
+        ",
+               in("r1") new_mode as u8
+        );
+    }
+}
 
 #[no_mangle]
 #[naked]
 pub extern "C" fn _start() -> ! {
     unsafe {
-        asm!("ldr sp, ={}",  const SP_START);
+        asm!("ldr sp, ={}",  const SP_SVC_START);
     }
     boot();
     loop {}
+}
+
+use log::LevelFilter;
+
+static LOGGER: logger::SimpleLogger = logger::SimpleLogger;
+
+pub fn init_logger() {
+    unsafe {
+        log::set_logger_racy(&LOGGER)
+            .map(|()| log::set_max_level(LevelFilter::Info))
+            .unwrap()
+    };
 }
 
 pub fn boot() {
@@ -35,6 +98,30 @@ pub fn boot() {
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION")
     );
+
+    //init_logger();
+
+    unsafe {
+        // switch_mode(ProcessorMode::FIQ);
+        // asm!("ldr sp, ={}",  const SP_FIQ_START);
+        switch_mode(ProcessorMode::IRQ);
+        asm!("ldr sp, ={}",  const SP_IRQ_START);
+        switch_mode(ProcessorMode::Abort);
+        asm!("ldr sp, ={}",  const SP_ABT_START);
+        switch_mode(ProcessorMode::Undefined);
+        asm!("ldr sp, ={}",  const SP_UND_START);
+        switch_mode(ProcessorMode::System);
+        //asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
+        switch_mode(ProcessorMode::Supervisor);
+    }
+
+    println!("mode {:?}", get_mode());
+    // switch_mode(ProcessorMode::System);
+    // info!("mode {:?}", get_mode());
+    // switch_mode(ProcessorMode::User);
+    // info!("mode {:?}", get_mode());
+    // switch_mode(ProcessorMode::System);
+    // info!("mode {:?}", get_mode());
 
     // // printf statement
     // println!(
@@ -111,35 +198,32 @@ fn panic(_info: &PanicInfo) -> ! {
 // The reset handler
 #[no_mangle]
 unsafe extern "C" fn ResetHandler() -> ! {
-    let _x = 42;
-
-    // can't return so we go into an infinite loop here
+    println!("swi");
     loop {}
 }
 
 // The reset handler
 #[no_mangle]
 unsafe extern "C" fn UndefinedInstruction() -> ! {
-    let _x = 43;
-
-    // can't return so we go into an infinite loop here
+    println!("swi");
     loop {}
 }
 
 // The reset handler
 #[no_mangle]
 unsafe extern "C" fn SoftwareInterrupt() -> ! {
-    let _x = 43;
+    asm!("nop");
+    asm!("nop");
 
-    // can't return so we go into an infinite loop here
+    println!("swi");
+
     loop {}
 }
 
 // The reset handler
 #[no_mangle]
 unsafe extern "C" fn PrefetchAbort() -> ! {
-    let _x = 44;
+    println!("swi");
 
-    // can't return so we go into an infinite loop here
     loop {}
 }

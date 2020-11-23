@@ -1,6 +1,6 @@
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "qemu-system-arm-portux-fork -M portux920t -m 64M -nographic -kernel"
+runner = "qemu-system-arm-portux-fork -M portux920t -m 64M -nographic -s -kernel"
 
 #[target.'cfg(all(target_arch = "arm", target_os = "none"))']
 #runner = "gdb-multiarch --nh -ex 'set architecture arm' -ex 'file target/armv4t-none-eabi/debug/rost' -ex 'target remote localhost:1234' -ex 'layout split'"
