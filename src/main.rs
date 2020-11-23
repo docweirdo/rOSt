@@ -6,7 +6,7 @@
 use arrayvec::ArrayString;
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::{read_volatile, write_volatile};
+use core::ptr::write_volatile;
 
 mod dbgu;
 mod fmt;
@@ -17,11 +17,13 @@ pub extern "C" fn _irq_handler() -> ! {
     loop {}
 }
 
+const SP_START: usize = 0x2FFFFF; // end of SDRAM
+
 #[no_mangle]
 #[naked]
 pub extern "C" fn _start() -> ! {
     unsafe {
-        asm!("ldr sp, =0x24000000");
+        asm!("ldr sp, ={}",  const SP_START);
     }
     boot();
     loop {}
@@ -39,15 +41,6 @@ pub fn boot() {
     //     "{} {:#X} {} PIO_A: {:p}",
     //     "Hello", 0x8BADF00D as u32, 'c', 0xFFFFF400 as *mut u32
     // );
-
-    //println!("write register");
-
-    unsafe {
-        //asm!("bx lr");
-        // asm!(".word 0xf7f0a000");
-        //  asm!("swi #0");
-        //write_volatile(0xFFFFFFFF as *mut u32, 0x1);
-    }
 
     println!("waiting for input... (press ENTER to echo)");
 
@@ -85,11 +78,25 @@ pub fn eval_check() -> bool {
         }
     }
 
-    if char_buf.eq("quit") {
-        return true;
-    }
-
     println!("Received: {}", char_buf);
+
+    match char_buf.as_str() {
+        "swi" => unsafe {
+            asm!("swi #0");
+        },
+        "undi" => unsafe {
+            asm!(".word 0xf7f0a000");
+        },
+        "dabort" => unsafe {
+            write_volatile(0xFFFFFFFF as *mut u32, 0x1);
+        },
+        "quit" => {
+            return true;
+        }
+        _ => {
+            println!("  Unknown command");
+        }
+    }
 
     false
 }
