@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(naked_functions)]
 #![feature(asm)]
+#![allow(unused_imports)]
 
 #[macro_use]
 extern crate num_derive;
@@ -21,27 +22,31 @@ mod logger;
 // https://blog.rust-lang.org/inside-rust/2020/06/08/new-inline-asm.html
 // https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
 
-const SP_USER_SYSTEM_START: usize = 0x2FFFFF; // end of SRAM
-const SP_FIQ_START: usize = 0x2DFFFF; // 190KB + 1,99.. KB for each stack
-const SP_IRQ_START: usize = 0x2BFFFF;
-const SP_SVC_START: usize = 0x29FFFF;
-const SP_ABT_START: usize = 0x27FFFF;
-const SP_UND_START: usize = 0x25FFFF;
+
+const SRAM_END : usize = 0x0020_4000;
+const STACK_SIZE : usize =  (1024*2);
+
+const SP_USER_SYSTEM_START: usize = SRAM_END - 0 * STACK_SIZE; // end of SRAM
+const SP_FIQ_START: usize = SRAM_END - 1 * STACK_SIZE;
+const SP_IRQ_START: usize = SRAM_END - 2 * STACK_SIZE;
+const SP_SVC_START: usize = SRAM_END - 3 * STACK_SIZE;
+const SP_ABT_START: usize = SRAM_END - 4 * STACK_SIZE;
+const SP_UND_START: usize = SRAM_END - 5 * STACK_SIZE;
 
 #[repr(u8)]
 #[derive(FromPrimitive, ToPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
 enum ProcessorMode {
-    User = 0b10000,
-    FIQ = 0b10001,
-    IRQ = 0b10010,
-    Supervisor = 0b10011,
-    Abort = 0b10111,
-    Undefined = 0b11011,
-    System = 0b11111,
+    User = 0x10,
+    FIQ = 0x11,
+    IRQ = 0x12,
+    Supervisor = 0x13,
+    Abort = 0x17,
+    Undefined = 0x1b,
+    System = 0x1F,
 }
 
 fn get_mode() -> ProcessorMode {
-    let mut cpsr: u32 = 0;
+    let mut cpsr: u32;
 
     unsafe {
         asm!("MRS {0}, CPSR", out(reg) cpsr);
@@ -50,6 +55,8 @@ fn get_mode() -> ProcessorMode {
     ProcessorMode::from_u8((cpsr & 0x1F) as u8).unwrap()
 }
 
+#[no_mangle]
+#[naked]
 fn switch_mode(new_mode: ProcessorMode) {
     // info!("Switching to processor mode {:?}", new_mode);
 
@@ -60,14 +67,24 @@ fn switch_mode(new_mode: ProcessorMode) {
     unsafe {
         asm!(
             "
-        MRS r0, cpsr
-        BIC r0, r0, #0x1F
-        ORR r0, r0, r1
-        MSR cpsr_c, r0
-        ",
-               in("r1") new_mode as u8
+        MOV r2, lr
+        MRS r1, cpsr
+        BIC r1, r1, #0x1F
+        ORR r1, r1, r0
+        MSR cpsr_c, r1
+        MOV lr, r2
+        "  // we save lr because lr gets corrupted during mode switch
         );
     }
+}
+
+const MC: *mut u32 = 0xFFFFFF00 as *mut u32;
+const MC_RCR: isize = 0x0;
+
+fn toggle_memory_remap() {
+    unsafe{
+        write_volatile(MC.offset(MC_RCR / 4), 1 as u32)
+    }   
 }
 
 #[no_mangle]
@@ -76,6 +93,7 @@ pub extern "C" fn _start() -> ! {
     unsafe {
         asm!("ldr sp, ={}",  const SP_SVC_START);
     }
+    toggle_memory_remap();
     boot();
     loop {}
 }
@@ -102,8 +120,8 @@ pub fn boot() {
     //init_logger();
 
     unsafe {
-        // switch_mode(ProcessorMode::FIQ);
-        // asm!("ldr sp, ={}",  const SP_FIQ_START);
+        switch_mode(ProcessorMode::FIQ);
+        asm!("ldr sp, ={}",  const SP_FIQ_START);
         switch_mode(ProcessorMode::IRQ);
         asm!("ldr sp, ={}",  const SP_IRQ_START);
         switch_mode(ProcessorMode::Abort);
@@ -111,7 +129,7 @@ pub fn boot() {
         switch_mode(ProcessorMode::Undefined);
         asm!("ldr sp, ={}",  const SP_UND_START);
         switch_mode(ProcessorMode::System);
-        //asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
+        asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
         switch_mode(ProcessorMode::Supervisor);
     }
 
@@ -195,35 +213,54 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-// The reset handler
+
 #[no_mangle]
 unsafe extern "C" fn ResetHandler() -> ! {
     println!("swi");
     loop {}
 }
 
-// The reset handler
+
 #[no_mangle]
 unsafe extern "C" fn UndefinedInstruction() -> ! {
-    println!("swi");
+    println!("undefined instruction");
     loop {}
 }
 
-// The reset handler
+
 #[no_mangle]
 unsafe extern "C" fn SoftwareInterrupt() -> ! {
-    asm!("nop");
-    asm!("nop");
-
-    println!("swi");
+    println!("software interrupt");
 
     loop {}
 }
 
-// The reset handler
 #[no_mangle]
 unsafe extern "C" fn PrefetchAbort() -> ! {
-    println!("swi");
+    println!("prefetch abort");
+
+    loop {}
+}
+
+
+#[no_mangle]
+unsafe extern "C" fn DataAbort() -> ! {
+    println!("data abort");
+
+    loop {}
+}
+
+
+#[no_mangle]
+unsafe extern "C" fn HardwareInterrupt() -> ! {
+    println!("hardware interrupt");
+
+    loop {}
+}
+
+#[no_mangle]
+unsafe extern "C" fn FastInterrupt() -> ! {
+    println!("fast interrupt");
 
     loop {}
 }
