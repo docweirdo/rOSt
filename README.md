@@ -1,6 +1,6 @@
 # rOSt
 
-This is a project for University containing bits and pieces of what might become an operating system for 32 bit ARM. Written in Rust and or C.
+This is a project for university containing bits and pieces of what might become an operating system for 32 bit ARM. It is written in Rust for the AT91RM9200, specifically the Portux920T.
 
 
 ## Testing
