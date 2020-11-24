@@ -18,6 +18,8 @@ use log::{debug, error, info};
 mod dbgu;
 mod fmt;
 mod logger;
+mod exceptions;
+mod memory;
 
 // use linked_list_allocator::LockedHeap;
 
@@ -27,15 +29,8 @@ mod logger;
 // https://blog.rust-lang.org/inside-rust/2020/06/08/new-inline-asm.html
 // https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
 
-const SRAM_END: usize = 0x0020_4000;
-const STACK_SIZE: usize = 1024 * 2;
+// init or memory init module? Memory module for stack and remapping? CPU Module for modeswitch and so on?
 
-const SP_USER_SYSTEM_START: usize = SRAM_END - 0 * STACK_SIZE; // end of SRAM
-const SP_FIQ_START: usize = SRAM_END - 1 * STACK_SIZE;
-const SP_IRQ_START: usize = SRAM_END - 2 * STACK_SIZE;
-const SP_SVC_START: usize = SRAM_END - 3 * STACK_SIZE;
-const SP_ABT_START: usize = SRAM_END - 4 * STACK_SIZE;
-const SP_UND_START: usize = SRAM_END - 5 * STACK_SIZE;
 
 #[repr(u8)]
 #[derive(FromPrimitive, ToPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
@@ -76,28 +71,13 @@ fn switch_processor_mode_naked(new_mode: ProcessorMode) {
     }
 }
 
-const MC: *mut u32 = 0xFFFFFF00 as *mut u32;
-const MC_RCR: isize = 0x0;
-
-fn toggle_memory_remap() {
-    unsafe { write_volatile(MC.offset(MC_RCR / 4), 1 as u32) }
-}
-
-// pub fn init_heap() {
-//     let heap_start = 0x2000_0000;
-//     let heap_end = 0x2400_0000;
-//     let heap_size = heap_end - heap_start;
-//     unsafe {
-//         ALLOCATOR.lock().init(heap_start, heap_size);
-//     }
-// }
 
 #[no_mangle]
 #[naked]
 pub extern "C" fn _start() -> ! {
-    init_processor_mode_stacks();
+    memory::init_processor_mode_stacks();
     init_logger();
-    toggle_memory_remap(); // blend sram to 0x0 for IVT
+    memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
 
     // init_heap();
     boot();
@@ -116,22 +96,7 @@ pub fn init_logger() {
     };
 }
 
-pub fn init_processor_mode_stacks() {
-    unsafe {
-        switch_processor_mode_naked(ProcessorMode::FIQ);
-        asm!("ldr sp, ={}",  const SP_FIQ_START);
-        switch_processor_mode_naked(ProcessorMode::IRQ);
-        asm!("ldr sp, ={}",  const SP_IRQ_START);
-        switch_processor_mode_naked(ProcessorMode::Abort);
-        asm!("ldr sp, ={}",  const SP_ABT_START);
-        switch_processor_mode_naked(ProcessorMode::Undefined);
-        asm!("ldr sp, ={}",  const SP_UND_START);
-        switch_processor_mode_naked(ProcessorMode::System);
-        asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
-        switch_processor_mode_naked(ProcessorMode::Supervisor);
-        asm!("ldr sp, ={}",  const SP_SVC_START);
-    }
-}
+
 
 pub fn boot() {
     println!(
@@ -212,54 +177,5 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-#[no_mangle]
-unsafe extern "C" fn ResetHandler() -> ! {
-    println!("reset");
-    panic!();
-}
 
-#[no_mangle]
-unsafe extern "C" fn UndefinedInstructionHandler() -> ! {
-    println!("undefined instruction");
-    panic!();
-}
 
-#[no_mangle]
-unsafe extern "C" fn SoftwareInterruptHandler() -> ! {
-    //println!("processor mode {:?}", get_mode());
-
-    let mut pc: usize = 24;
-    //asm!("mov {}, pc", out(reg) pc);
-    println!("software interrupt at {:X}", pc);
-    panic!();
-}
-
-#[no_mangle]
-unsafe extern "C" fn PrefetchAbortHandler() -> ! {
-    println!("prefetch abort");
-    panic!();
-}
-
-#[no_mangle]
-unsafe extern "C" fn DataAbortHandler() -> ! {
-    println!("data abort");
-    panic!();
-}
-
-#[no_mangle]
-unsafe extern "C" fn HardwareInterruptHandler() -> ! {
-    println!("hardware interrupt");
-    panic!();
-}
-
-#[no_mangle]
-unsafe extern "C" fn FastInterruptHandler() -> ! {
-    println!("fast interrupt");
-    panic!();
-}
-
-// #[alloc_error_handler]
-// fn alloc_error(_layout: Layout) -> ! {
-//     println!("alloc_error_handler");
-//     loop {}
-// }
