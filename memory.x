@@ -1,7 +1,5 @@
 
 EXTERN(ExceptionsJump)
-EXTERN(StartJump)
-
 ENTRY(_start)
 
 MEMORY {

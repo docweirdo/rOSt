@@ -31,7 +31,13 @@ fn main() {
     println!("cargo:rerun-if-changed=memory.x");
 
     // assemble the `asm.s` file
-    Build::new().file("asm.s").compiler("arm-none-eabi-gcc").compile("asm");
+    Build::new()
+        .file("asm.s")
+        .compiler("arm-none-eabi-gcc")
+        .flag("-mlittle-endian")
+        .flag("-mthumb-interwork")
+        .flag("-march=armv4t")
+        .compile("asm");
 
     // rebuild if `asm.s` changed
     println!("cargo:rerun-if-changed=asm.s");

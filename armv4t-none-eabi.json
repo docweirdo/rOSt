@@ -13,7 +13,6 @@
   "executables": true,
   "features": "+soft-float,+strict-align",
   "has-thumb-interworking": true,
-  "is-builtin": false,
   "linker": "arm-none-eabi-ld",
   "linker-flavor": "ld",
   "linker-is-gnu": true,
