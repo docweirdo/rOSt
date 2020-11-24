@@ -13,18 +13,22 @@ use arrayvec::ArrayString;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr::write_volatile;
-use log::{error, info};
+use log::{debug, error, info};
 
 mod dbgu;
 mod fmt;
 mod logger;
 
+// use linked_list_allocator::LockedHeap;
+
+// #[global_allocator]
+// static ALLOCATOR: LockedHeap = LockedHeap::empty();
+
 // https://blog.rust-lang.org/inside-rust/2020/06/08/new-inline-asm.html
 // https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
 
-
-const SRAM_END : usize = 0x0020_4000;
-const STACK_SIZE : usize =  (1024*2);
+const SRAM_END: usize = 0x0020_4000;
+const STACK_SIZE: usize = 1024 * 2;
 
 const SP_USER_SYSTEM_START: usize = SRAM_END - 0 * STACK_SIZE; // end of SRAM
 const SP_FIQ_START: usize = SRAM_END - 1 * STACK_SIZE;
@@ -55,15 +59,9 @@ fn get_mode() -> ProcessorMode {
     ProcessorMode::from_u8((cpsr & 0x1F) as u8).unwrap()
 }
 
-#[no_mangle]
 #[naked]
-fn switch_mode(new_mode: ProcessorMode) {
-    // info!("Switching to processor mode {:?}", new_mode);
-
-    // if get_mode() == ProcessorMode::User {
-    //     error!("switch_mode: You can't escape from user mode");
-    // }
-
+#[allow(unused_variables)]
+fn switch_processor_mode_naked(new_mode: ProcessorMode) {
     unsafe {
         asm!(
             "
@@ -73,7 +71,7 @@ fn switch_mode(new_mode: ProcessorMode) {
         ORR r1, r1, r0
         MSR cpsr_c, r1
         MOV lr, r2
-        "  // we save lr because lr gets corrupted during mode switch
+        " // we save lr because lr gets corrupted during mode switch
         );
     }
 }
@@ -82,18 +80,26 @@ const MC: *mut u32 = 0xFFFFFF00 as *mut u32;
 const MC_RCR: isize = 0x0;
 
 fn toggle_memory_remap() {
-    unsafe{
-        write_volatile(MC.offset(MC_RCR / 4), 1 as u32)
-    }   
+    unsafe { write_volatile(MC.offset(MC_RCR / 4), 1 as u32) }
 }
+
+// pub fn init_heap() {
+//     let heap_start = 0x2000_0000;
+//     let heap_end = 0x2400_0000;
+//     let heap_size = heap_end - heap_start;
+//     unsafe {
+//         ALLOCATOR.lock().init(heap_start, heap_size);
+//     }
+// }
 
 #[no_mangle]
 #[naked]
 pub extern "C" fn _start() -> ! {
-    unsafe {
-        asm!("ldr sp, ={}",  const SP_SVC_START);
-    }
-    toggle_memory_remap();
+    init_processor_mode_stacks();
+    init_logger();
+    toggle_memory_remap(); // blend sram to 0x0 for IVT
+
+    // init_heap();
     boot();
     loop {}
 }
@@ -105,9 +111,26 @@ static LOGGER: logger::SimpleLogger = logger::SimpleLogger;
 pub fn init_logger() {
     unsafe {
         log::set_logger_racy(&LOGGER)
-            .map(|()| log::set_max_level(LevelFilter::Info))
+            .map(|()| log::set_max_level(LevelFilter::Trace))
             .unwrap()
     };
+}
+
+pub fn init_processor_mode_stacks() {
+    unsafe {
+        switch_processor_mode_naked(ProcessorMode::FIQ);
+        asm!("ldr sp, ={}",  const SP_FIQ_START);
+        switch_processor_mode_naked(ProcessorMode::IRQ);
+        asm!("ldr sp, ={}",  const SP_IRQ_START);
+        switch_processor_mode_naked(ProcessorMode::Abort);
+        asm!("ldr sp, ={}",  const SP_ABT_START);
+        switch_processor_mode_naked(ProcessorMode::Undefined);
+        asm!("ldr sp, ={}",  const SP_UND_START);
+        switch_processor_mode_naked(ProcessorMode::System);
+        asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
+        switch_processor_mode_naked(ProcessorMode::Supervisor);
+        asm!("ldr sp, ={}",  const SP_SVC_START);
+    }
 }
 
 pub fn boot() {
@@ -117,37 +140,10 @@ pub fn boot() {
         env!("CARGO_PKG_VERSION")
     );
 
-    //init_logger();
-
-    unsafe {
-        switch_mode(ProcessorMode::FIQ);
-        asm!("ldr sp, ={}",  const SP_FIQ_START);
-        switch_mode(ProcessorMode::IRQ);
-        asm!("ldr sp, ={}",  const SP_IRQ_START);
-        switch_mode(ProcessorMode::Abort);
-        asm!("ldr sp, ={}",  const SP_ABT_START);
-        switch_mode(ProcessorMode::Undefined);
-        asm!("ldr sp, ={}",  const SP_UND_START);
-        switch_mode(ProcessorMode::System);
-        asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
-        switch_mode(ProcessorMode::Supervisor);
-    }
-
-    println!("mode {:?}", get_mode());
-    // switch_mode(ProcessorMode::System);
-    // info!("mode {:?}", get_mode());
-    // switch_mode(ProcessorMode::User);
-    // info!("mode {:?}", get_mode());
-    // switch_mode(ProcessorMode::System);
-    // info!("mode {:?}", get_mode());
-
-    // // printf statement
-    // println!(
-    //     "{} {:#X} {} PIO_A: {:p}",
-    //     "Hello", 0x8BADF00D as u32, 'c', 0xFFFFF400 as *mut u32
-    // );
+    debug!("processor mode {:?}", get_mode());
 
     println!("waiting for input... (press ENTER to echo)");
+    println!("available commands: swi, undi, dabort, quit");
 
     loop {
         if eval_check() {
@@ -193,7 +189,11 @@ pub fn eval_check() -> bool {
             asm!(".word 0xf7f0a000");
         },
         "dabort" => unsafe {
-            write_volatile(0xFFFFFFFF as *mut u32, 0x1);
+            asm!(
+                "
+                ldr r0, =0xFFFFFFFF
+                str r0, [r0]"
+            );
         },
         "quit" => {
             return true;
@@ -208,59 +208,58 @@ pub fn eval_check() -> bool {
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    println!("Kernel Panic!!! Jump ship!");
-
+    println!("panic handler");
     loop {}
 }
-
 
 #[no_mangle]
 unsafe extern "C" fn ResetHandler() -> ! {
-    println!("swi");
-    loop {}
+    println!("reset");
+    panic!();
 }
 
-
 #[no_mangle]
-unsafe extern "C" fn UndefinedInstruction() -> ! {
+unsafe extern "C" fn UndefinedInstructionHandler() -> ! {
     println!("undefined instruction");
-    loop {}
-}
-
-
-#[no_mangle]
-unsafe extern "C" fn SoftwareInterrupt() -> ! {
-    println!("software interrupt");
-
-    loop {}
+    panic!();
 }
 
 #[no_mangle]
-unsafe extern "C" fn PrefetchAbort() -> ! {
+unsafe extern "C" fn SoftwareInterruptHandler() -> ! {
+    //println!("processor mode {:?}", get_mode());
+
+    let mut pc: usize = 24;
+    //asm!("mov {}, pc", out(reg) pc);
+    println!("software interrupt at {:X}", pc);
+    panic!();
+}
+
+#[no_mangle]
+unsafe extern "C" fn PrefetchAbortHandler() -> ! {
     println!("prefetch abort");
-
-    loop {}
+    panic!();
 }
 
-
 #[no_mangle]
-unsafe extern "C" fn DataAbort() -> ! {
+unsafe extern "C" fn DataAbortHandler() -> ! {
     println!("data abort");
-
-    loop {}
+    panic!();
 }
 
-
 #[no_mangle]
-unsafe extern "C" fn HardwareInterrupt() -> ! {
+unsafe extern "C" fn HardwareInterruptHandler() -> ! {
     println!("hardware interrupt");
-
-    loop {}
+    panic!();
 }
 
 #[no_mangle]
-unsafe extern "C" fn FastInterrupt() -> ! {
+unsafe extern "C" fn FastInterruptHandler() -> ! {
     println!("fast interrupt");
-
-    loop {}
+    panic!();
 }
+
+// #[alloc_error_handler]
+// fn alloc_error(_layout: Layout) -> ! {
+//     println!("alloc_error_handler");
+//     loop {}
+// }
