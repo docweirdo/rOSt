@@ -54,13 +54,13 @@ unsafe impl Sync for BumpPointerAlloc {}
 
 unsafe impl GlobalAlloc for BumpPointerAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let head = self.head.get();
-        let size = layout.size();
-        let align = layout.align();
-        let align_mask = !(align - 1);
+        let head: *mut usize = self.head.get();
+        let size: usize = layout.size();
+        let align: usize = layout.align();
+        let align_mask : usize = !(align - 1);
 
         // move start up to the next alignment boundary
-        let start = (*head + align - 1) & align_mask;
+        let start: usize = (*head + align - 1) & align_mask;
 
         if start + size > self.end {
             // a null pointer signal an Out Of Memory condition
