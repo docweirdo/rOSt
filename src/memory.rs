@@ -2,7 +2,6 @@ use crate::switch_processor_mode_naked;
 use crate::ProcessorMode;
 use core::ptr::write_volatile;
 
-
 const SRAM_END: usize = 0x0020_4000;
 const STACK_SIZE: usize = 1024 * 2;
 
@@ -29,8 +28,11 @@ pub fn toggle_memory_remap() {
 //     }
 // }
 
+#[naked]
+#[inline(always)]
 pub fn init_processor_mode_stacks() {
     unsafe {
+        asm!("ldr sp, ={}",  const SP_SVC_START);
         switch_processor_mode_naked(ProcessorMode::FIQ);
         asm!("ldr sp, ={}",  const SP_FIQ_START);
         switch_processor_mode_naked(ProcessorMode::IRQ);
@@ -42,12 +44,11 @@ pub fn init_processor_mode_stacks() {
         switch_processor_mode_naked(ProcessorMode::System);
         asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
         switch_processor_mode_naked(ProcessorMode::Supervisor);
-        asm!("ldr sp, ={}",  const SP_SVC_START);
     }
 }
 
 // #[alloc_error_handler]
 // fn alloc_error(_layout: Layout) -> ! {
-//     println!("alloc_error_handler");
+//     println!("alloc: out of memory");
 //     loop {}
 // }

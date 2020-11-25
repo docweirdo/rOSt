@@ -16,9 +16,9 @@ use core::ptr::write_volatile;
 use log::{debug, error, info};
 
 mod dbgu;
+mod exceptions;
 mod fmt;
 mod logger;
-mod exceptions;
 mod memory;
 
 // use linked_list_allocator::LockedHeap;
@@ -30,7 +30,6 @@ mod memory;
 // https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
 
 // init or memory init module? Memory module for stack and remapping? CPU Module for modeswitch and so on?
-
 
 #[repr(u8)]
 #[derive(FromPrimitive, ToPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
@@ -56,6 +55,7 @@ fn get_mode() -> ProcessorMode {
 
 #[naked]
 #[allow(unused_variables)]
+#[inline(always)]
 fn switch_processor_mode_naked(new_mode: ProcessorMode) {
     unsafe {
         asm!(
@@ -71,15 +71,11 @@ fn switch_processor_mode_naked(new_mode: ProcessorMode) {
     }
 }
 
-
 #[no_mangle]
 #[naked]
 pub extern "C" fn _start() -> ! {
     memory::init_processor_mode_stacks();
-    init_logger();
-    memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
 
-    // init_heap();
     boot();
     loop {}
 }
@@ -96,9 +92,9 @@ pub fn init_logger() {
     };
 }
 
-
-
 pub fn boot() {
+    memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
+    init_logger();
     println!(
         "{} {}: the start",
         env!("CARGO_PKG_NAME"),
@@ -176,6 +172,3 @@ fn panic(_info: &PanicInfo) -> ! {
     println!("panic handler");
     loop {}
 }
-
-
-

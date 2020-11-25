@@ -2,6 +2,7 @@ use crate::print;
 use crate::println;
 use arrayvec::ArrayString;
 use core::fmt::Write;
+use log::debug;
 
 #[no_mangle]
 unsafe extern "C" fn ResetHandler() -> ! {
@@ -11,17 +12,22 @@ unsafe extern "C" fn ResetHandler() -> ! {
 
 #[no_mangle]
 unsafe extern "C" fn UndefinedInstructionHandler() -> ! {
-    println!("undefined instruction");
+    println!("undefined instruction handler");
+    debug!("processor mode {:?}", crate::get_mode());
+    let pc: usize = 24;
+    //asm!("mov {}, pc", out(reg) pc);      // Read from PC, Doku nachlesen!!!
+    println!("undefined instruction at {:X}", pc);
     panic!();
 }
 
 #[no_mangle]
 unsafe extern "C" fn SoftwareInterruptHandler() -> ! {
-    //println!("processor mode {:?}", get_mode());
+    println!("software interrupt handler");
+    debug!("processor mode {:?}", crate::get_mode());
 
-    //let mut pc: usize = 24;
+    let pc: usize = 24;
     //asm!("mov {}, pc", out(reg) pc);      // Read from PC, Doku nachlesen!!!
-    //println!("software interrupt at {:X}", pc);
+    println!("software interrupt at {:X}", pc);
     panic!();
 }
 
@@ -33,7 +39,11 @@ unsafe extern "C" fn PrefetchAbortHandler() -> ! {
 
 #[no_mangle]
 unsafe extern "C" fn DataAbortHandler() -> ! {
-    println!("data abort");
+    println!("data abort handler");
+    debug!("processor mode {:?}", crate::get_mode());
+    let pc: usize = 24;
+    //asm!("mov {}, pc", out(reg) pc);      // Read from PC, Doku nachlesen!!!
+    println!("data abort at {:X}", pc);
     panic!();
 }
 
