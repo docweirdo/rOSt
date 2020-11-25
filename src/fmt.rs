@@ -5,10 +5,8 @@ use crate::dbgu;
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) =>  {
-        {
             let format_string = alloc::format!($($arg)*);
             crate::fmt::send_str(&format_string);
-        }
     }
 }
 

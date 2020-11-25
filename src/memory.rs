@@ -1,10 +1,9 @@
 use crate::println;
-use crate::switch_processor_mode_naked;
-use crate::ProcessorMode;
+use crate::processor;
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
-    ptr::{self, write_volatile},
+    ptr::{self, read_volatile, write_volatile},
 };
 
 const SRAM_END: usize = 0x0020_4000;
@@ -19,9 +18,15 @@ const SP_UND_START: usize = SRAM_END - 5 * STACK_SIZE;
 
 const MC: *mut u32 = 0xFFFFFF00 as *mut u32;
 const MC_RCR: isize = 0x0;
+const MC_ASR: isize = 0x4;
+const MC_AASR: isize = 0x8;
 
 pub fn toggle_memory_remap() {
     unsafe { write_volatile(MC.offset(MC_RCR / 4), 1 as u32) }
+}
+
+pub fn mc_get_abort_address() -> u32 {
+    unsafe { read_volatile(MC.offset(MC_AASR / 4)) }
 }
 
 #[naked]
@@ -29,17 +34,17 @@ pub fn toggle_memory_remap() {
 pub fn init_processor_mode_stacks() {
     unsafe {
         asm!("ldr sp, ={}",  const SP_SVC_START);
-        switch_processor_mode_naked(ProcessorMode::FIQ);
+        processor::switch_processor_mode_naked(processor::ProcessorMode::FIQ);
         asm!("ldr sp, ={}",  const SP_FIQ_START);
-        switch_processor_mode_naked(ProcessorMode::IRQ);
+        processor::switch_processor_mode_naked(processor::ProcessorMode::IRQ);
         asm!("ldr sp, ={}",  const SP_IRQ_START);
-        switch_processor_mode_naked(ProcessorMode::Abort);
+        processor::switch_processor_mode_naked(processor::ProcessorMode::Abort);
         asm!("ldr sp, ={}",  const SP_ABT_START);
-        switch_processor_mode_naked(ProcessorMode::Undefined);
+        processor::switch_processor_mode_naked(processor::ProcessorMode::Undefined);
         asm!("ldr sp, ={}",  const SP_UND_START);
-        switch_processor_mode_naked(ProcessorMode::System);
+        processor::switch_processor_mode_naked(processor::ProcessorMode::System);
         asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
-        switch_processor_mode_naked(ProcessorMode::Supervisor);
+        processor::switch_processor_mode_naked(processor::ProcessorMode::Supervisor);
     }
 }
 
@@ -58,6 +63,8 @@ unsafe impl GlobalAlloc for BumpPointerAlloc {
         let size: usize = layout.size();
         let align: usize = layout.align();
         let align_mask : usize = !(align - 1);
+
+        // crate::println_with_stack!("\nsize: {} align: {}", size, align);
 
         // move start up to the next alignment boundary
         let start: usize = (*head + align - 1) & align_mask;
@@ -80,17 +87,17 @@ const HEAP_START: usize = 0x2300_0000;
 const HEAP_END: usize = 0x2400_0000;
 
 #[global_allocator]
-static HEAP: BumpPointerAlloc = BumpPointerAlloc {
+static GLOBAL_ALLOCATOR: BumpPointerAlloc = BumpPointerAlloc {
     head: UnsafeCell::new(HEAP_START),
     end: HEAP_END,
 };
 
 pub fn get_current_heap_size() -> usize {
-    unsafe { *HEAP.head.get() - HEAP_START }
+    unsafe { *GLOBAL_ALLOCATOR.head.get() - HEAP_START }
 }
 
 pub fn get_heap_size_left() -> usize {
-    unsafe { HEAP_END - *HEAP.head.get() }
+    unsafe { HEAP_END - *GLOBAL_ALLOCATOR.head.get() }
 }
 
 #[alloc_error_handler]
