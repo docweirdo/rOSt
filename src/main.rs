@@ -132,6 +132,11 @@ pub fn eval_check() -> bool {
     }
 
     println!("Received: {}", char_buf);
+    debug!(
+        "current heap size: {:#X}, left: {:#X}",
+        memory::get_current_heap_size(),
+        memory::get_heap_size_left()
+    );
 
     match char_buf.as_str() {
         "swi" => unsafe {

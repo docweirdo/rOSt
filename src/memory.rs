@@ -85,6 +85,14 @@ static HEAP: BumpPointerAlloc = BumpPointerAlloc {
     end: HEAP_END,
 };
 
+pub fn get_current_heap_size() -> usize {
+    unsafe { *HEAP.head.get() - HEAP_START }
+}
+
+pub fn get_heap_size_left() -> usize {
+    unsafe { HEAP_END - *HEAP.head.get() }
+}
+
 #[alloc_error_handler]
 fn alloc_error(_layout: Layout) -> ! {
     crate::println_with_stack!("alloc: out of memory");
