@@ -1,7 +1,4 @@
-use crate::print;
 use crate::println;
-use arrayvec::ArrayString;
-use core::fmt::Write;
 use log::debug;
 
 #[no_mangle]

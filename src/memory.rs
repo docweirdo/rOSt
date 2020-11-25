@@ -1,6 +1,11 @@
+use crate::println;
 use crate::switch_processor_mode_naked;
 use crate::ProcessorMode;
-use core::ptr::write_volatile;
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    cell::UnsafeCell,
+    ptr::{self, write_volatile},
+};
 
 const SRAM_END: usize = 0x0020_4000;
 const STACK_SIZE: usize = 1024 * 2;
@@ -18,15 +23,6 @@ const MC_RCR: isize = 0x0;
 pub fn toggle_memory_remap() {
     unsafe { write_volatile(MC.offset(MC_RCR / 4), 1 as u32) }
 }
-
-// pub fn init_heap() {
-//     let heap_start = 0x2000_0000;
-//     let heap_end = 0x2400_0000;
-//     let heap_size = heap_end - heap_start;
-//     unsafe {
-//         ALLOCATOR.lock().init(heap_start, heap_size);
-//     }
-// }
 
 #[naked]
 #[inline(always)]
@@ -47,8 +43,50 @@ pub fn init_processor_mode_stacks() {
     }
 }
 
-// #[alloc_error_handler]
-// fn alloc_error(_layout: Layout) -> ! {
-//     println!("alloc: out of memory");
-//     loop {}
-// }
+// https://rust-embedded.github.io/book/collections/index.html?using-alloc
+
+struct BumpPointerAlloc {
+    head: UnsafeCell<usize>,
+    end: usize,
+}
+
+unsafe impl Sync for BumpPointerAlloc {}
+
+unsafe impl GlobalAlloc for BumpPointerAlloc {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let head = self.head.get();
+        let size = layout.size();
+        let align = layout.align();
+        let align_mask = !(align - 1);
+
+        // move start up to the next alignment boundary
+        let start = (*head + align - 1) & align_mask;
+
+        if start + size > self.end {
+            // a null pointer signal an Out Of Memory condition
+            ptr::null_mut()
+        } else {
+            *head = start + size;
+            start as *mut u8
+        }
+    }
+
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {
+        // this allocator never deallocates memory
+    }
+}
+
+const HEAP_START: usize = 0x2300_0000;
+const HEAP_END: usize = 0x2400_0000;
+
+#[global_allocator]
+static HEAP: BumpPointerAlloc = BumpPointerAlloc {
+    head: UnsafeCell::new(HEAP_START),
+    end: HEAP_END,
+};
+
+#[alloc_error_handler]
+fn alloc_error(_layout: Layout) -> ! {
+    crate::println_with_stack!("alloc: out of memory");
+    loop {}
+}

@@ -1,16 +1,16 @@
 #![no_std]
 #![no_main]
+#![feature(alloc_error_handler)]
 #![feature(naked_functions)]
 #![feature(asm)]
 #![allow(unused_imports)]
 
 #[macro_use]
 extern crate num_derive;
+extern crate alloc;
 
 use num_traits::{FromPrimitive, ToPrimitive};
 
-use arrayvec::ArrayString;
-use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr::write_volatile;
 use log::{debug, error, info};
@@ -20,11 +20,6 @@ mod exceptions;
 mod fmt;
 mod logger;
 mod memory;
-
-// use linked_list_allocator::LockedHeap;
-
-// #[global_allocator]
-// static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 // https://blog.rust-lang.org/inside-rust/2020/06/08/new-inline-asm.html
 // https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
@@ -121,7 +116,7 @@ const KEY_BACKSPACE: u32 = 0x8;
 const KEY_DELETE: u32 = 0x7F;
 
 pub fn eval_check() -> bool {
-    let mut char_buf = ArrayString::<[u8; 48]>::new();
+    let mut char_buf = alloc::string::String::new();
     loop {
         if dbgu::is_char_available() {
             let last_char = dbgu::read_char();
@@ -131,10 +126,6 @@ pub fn eval_check() -> bool {
             if last_char == KEY_DELETE || last_char == KEY_BACKSPACE {
                 char_buf.pop();
             } else {
-                if char_buf.is_full() {
-                    println!("Over capacity! echo buffered string");
-                    break;
-                }
                 char_buf.push(core::char::from_u32(last_char).expect("fail to convert"));
             }
         }
