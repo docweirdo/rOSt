@@ -9,7 +9,7 @@ This is a project for university containing bits and pieces of what might become
 - `arm-none-eabi-gcc` in the `PATH`
 - Rust via `rustup` in the `PATH`
     - install [rustup](https://rustup.rs/)
-    - `$ rustup default install nightly-2020-11-20`
+    - `$ rustup default nightly-2020-11-20`
     - `$ rustup component add rust-src`
 
 #### Steps
