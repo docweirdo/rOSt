@@ -8,6 +8,7 @@ This is a project for university containing bits and pieces of what might become
 ### Requirements to build
 - `arm-none-eabi-gcc` in the `PATH`
 - Rust via `rustup` in the `PATH`
+    - install [rustup](https://rustup.rs/)
     - `$ rustup default nightly`
     - `$ rustup component add rust-src`
 
