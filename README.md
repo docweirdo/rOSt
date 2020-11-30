@@ -5,13 +5,20 @@ This is a project for university containing bits and pieces of what might become
 
 ## Testing
 
-### Requirements 
-- `qemu-system-arm-portux-fork` in the `PATH` built from https://git.imp.fu-berlin.de/koenigl/qemu-portux (https://mycampus.imp.fu-berlin.de/portal/site/2fde4704-93a2-49e7-8b14-b57da998874a/tool/1e4443b8-8b1f-437b-bea3-331858e0d74f/discussionForum/message/dfViewThread)
+### Requirements to build
 - `arm-none-eabi-gcc` in the `PATH`
-- Rust (Nightly version) in the `PATH`
+- Rust via `rustup` in the `PATH`
+    - `$ rustup default nightly`
+    - `$ rustup component add rust-src`
 
-### Steps
-1. Run `cargo run` to start qemu with our kernel
+#### Steps
+1. Run `$ cargo build` to compile (default target path: `target/armv4t-none-eabi/debug/rost`) to binary elf
+
+### Requirements to run
+- `qemu-system-arm-portux-fork` in the `PATH` built from https://git.imp.fu-berlin.de/koenigl/qemu-portux
+
+#### Steps
+1. Run `$ cargo run` to start qemu with our kernel
 
 
 ## Useful links
