@@ -17,6 +17,7 @@ mod dbgu;
 mod exceptions;
 mod fmt;
 mod logger;
+#[macro_use]
 mod memory;
 mod processor;
 
@@ -24,7 +25,7 @@ mod processor;
 #[no_mangle]
 #[naked]
 pub extern "C" fn _start() -> ! {
-    memory::init_processor_mode_stacks();
+    init_processor_mode_stacks!();
 
     boot();
     loop {}

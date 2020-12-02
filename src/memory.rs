@@ -9,12 +9,12 @@ use core::{
 const SRAM_END: usize = 0x0020_4000;
 const STACK_SIZE: usize = 1024 * 2;
 
-const SP_USER_SYSTEM_START: usize = SRAM_END - 0 * STACK_SIZE; // end of SRAM
-const SP_FIQ_START: usize = SRAM_END - 1 * STACK_SIZE;
-const SP_IRQ_START: usize = SRAM_END - 2 * STACK_SIZE;
-const SP_SVC_START: usize = SRAM_END - 3 * STACK_SIZE;
-const SP_ABT_START: usize = SRAM_END - 4 * STACK_SIZE;
-const SP_UND_START: usize = SRAM_END - 5 * STACK_SIZE;
+pub const SP_USER_SYSTEM_START: usize = SRAM_END - 0 * STACK_SIZE; // end of SRAM
+pub const SP_FIQ_START: usize = SRAM_END - 1 * STACK_SIZE;
+pub const SP_IRQ_START: usize = SRAM_END - 2 * STACK_SIZE;
+pub const SP_SVC_START: usize = SRAM_END - 3 * STACK_SIZE;
+pub const SP_ABT_START: usize = SRAM_END - 4 * STACK_SIZE;
+pub const SP_UND_START: usize = SRAM_END - 5 * STACK_SIZE;
 
 const MC: *mut u32 = 0xFFFFFF00 as *mut u32;
 const MC_RCR: isize = 0x0;
@@ -29,23 +29,25 @@ pub fn mc_get_abort_address() -> u32 {
     unsafe { read_volatile(MC.offset(MC_AASR / 4)) }
 }
 
-#[naked]
-#[inline(always)]
-pub fn init_processor_mode_stacks() {
-    unsafe {
-        asm!("ldr sp, ={}",  const SP_SVC_START);
-        processor::switch_processor_mode_naked(processor::ProcessorMode::FIQ);
-        asm!("ldr sp, ={}",  const SP_FIQ_START);
-        processor::switch_processor_mode_naked(processor::ProcessorMode::IRQ);
-        asm!("ldr sp, ={}",  const SP_IRQ_START);
-        processor::switch_processor_mode_naked(processor::ProcessorMode::Abort);
-        asm!("ldr sp, ={}",  const SP_ABT_START);
-        processor::switch_processor_mode_naked(processor::ProcessorMode::Undefined);
-        asm!("ldr sp, ={}",  const SP_UND_START);
-        processor::switch_processor_mode_naked(processor::ProcessorMode::System);
-        asm!("ldr sp, ={}",  const SP_USER_SYSTEM_START);
-        processor::switch_processor_mode_naked(processor::ProcessorMode::Supervisor);
-    }
+#[macro_export]
+macro_rules! init_processor_mode_stacks {
+    () => {
+        unsafe {
+            asm!("ldr sp, ={}",  const memory::SP_SVC_START);
+            processor::switch_processor_mode_naked(processor::ProcessorMode::FIQ);
+            asm!("ldr sp, ={}",  const memory::SP_FIQ_START);
+            processor::switch_processor_mode_naked(processor::ProcessorMode::IRQ);
+            asm!("ldr sp, ={}",  const memory::SP_IRQ_START);
+            processor::switch_processor_mode_naked(processor::ProcessorMode::Abort);
+            asm!("ldr sp, ={}",  const memory::SP_ABT_START);
+            processor::switch_processor_mode_naked(processor::ProcessorMode::Undefined);
+            asm!("ldr sp, ={}",  const memory::SP_UND_START);
+            processor::switch_processor_mode_naked(processor::ProcessorMode::System);
+            asm!("ldr sp, ={}",  const memory::SP_USER_SYSTEM_START);
+            processor::switch_processor_mode_naked(processor::ProcessorMode::Supervisor);
+        }
+    };
+
 }
 
 // https://rust-embedded.github.io/book/collections/index.html?using-alloc
@@ -62,7 +64,7 @@ unsafe impl GlobalAlloc for BumpPointerAlloc {
         let head: *mut usize = self.head.get();
         let size: usize = layout.size();
         let align: usize = layout.align();
-        let align_mask : usize = !(align - 1);
+        let align_mask: usize = !(align - 1);
 
         // crate::println_with_stack!("\nsize: {} align: {}", size, align);
 
