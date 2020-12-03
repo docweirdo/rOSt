@@ -4,8 +4,7 @@ qemu-system-arm-portux-fork
 .gdb_history
 Cargo.lock
 target/
-# exclude binary from gitignore
-!target/armv4t-none-eabi/debug/rost
+
 
 # editor files
 .vscode/*
