@@ -64,3 +64,4 @@ unsafe extern "C" fn FastInterruptHandler() -> ! {
     println!("fast interrupt");
     panic!();
 }
+

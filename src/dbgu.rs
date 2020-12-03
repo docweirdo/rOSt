@@ -1,4 +1,4 @@
-use core::ptr::{read_volatile, write_volatile};
+use crate::helpers;
 
 /*
 
@@ -26,28 +26,33 @@ DBGU_SR 0x0014  Status Register => TXRDY = bit 1
 
 //Base Addresses
 //const PIO_A: *mut u32 = 0xFFFFF400 as *mut u32;
-const DBGU: *mut u32 = 0xFFFFF200 as *mut u32;
+struct DBGU;
+impl DBGU {
+    /// DBGU Base Address
+    const BASE_ADDRESS: u32 = 0xFFFFF200;
 
-//Offsets PIO_A
-//const PIO_PDR: isize = 0x0004;
-//const PIO_ASR: isize = 0x0070;
-//const PIO_PUDR: isize = 0x0060;
+    // Control Register Offset
+    const CR: isize = 0x0000;
 
-//Offsets DBGU
-//const DBGU_CR: isize = 0x0000; // Control Register
-const DBGU_SR: isize = 0x0014; // Status Register
-const DBGU_RHR: isize = 0x0018; // Receive Holding Register
-const DBGU_THR: isize = 0x001C; //Transmit Holding Register
+    /// Status Register Offset
+    const SR: u32 = 0x0014;
+    /// Receive Holding Register Offset
+    const RHR: u32 = 0x0018;
+    /// Transmit Holding Register Offset
+    const THR: u32 = 0x001C;
 
-// const DBGU_BRGR: isize = 0x0020; // Baud Rate Generator Register
+    // Baud Rate Generator Register Offset
+    const BRGR: isize = 0x0020;
 
-//Bits
-//const DBGU_RX: u32 = 1 << 30;
-//const DBGU_TX: u32 = 1 << 31;
+    /// DBGU_SR - Status Register Bits
 
-// DBGU_SR - Status Register
-const DBGU_TXRDY: u32 = 1 << 1; // Transmitter Ready
-const DBGU_RXRDY: u32 = 1 << 0; // Receiver Ready
+    /// Receiver Ready Bit
+    const RXRDY: u32 = 0;
+    /// Transmitter Ready Bit
+    const TXRDY: u32 = 1;
+}
+
+
 
 /*
 pub unsafe fn dbgu_setup() {
@@ -70,18 +75,18 @@ pub unsafe fn dbgu_setup() {
 
 pub fn is_char_available() -> bool {
     unsafe {
-        return (read_volatile(DBGU.offset(DBGU_SR / 4)) & DBGU_RXRDY) != 0;
+        return helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::RXRDY) != 0;
     }
 }
 
 pub fn read_char() -> u32 {
-    unsafe { read_volatile(DBGU.offset(DBGU_RHR / 4)) }
+    unsafe { helpers::read_register(DBGU::BASE_ADDRESS, DBGU::RHR) }
 }
 
 pub fn write_char(character: char) {
     unsafe {
-        if (read_volatile(DBGU.offset(DBGU_SR / 4)) & DBGU_TXRDY) != 0 {
-            write_volatile(DBGU.offset(DBGU_THR / 4), character as u32);
+        if helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::TXRDY) != 0 {
+            helpers::write_register(DBGU::BASE_ADDRESS, DBGU::THR, character as u32);
         }
     }
 }

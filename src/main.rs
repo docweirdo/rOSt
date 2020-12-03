@@ -10,7 +10,6 @@ extern crate num_derive;
 extern crate alloc;
 
 use core::panic::PanicInfo;
-use core::ptr::write_volatile;
 use log::{debug, error, info};
 
 mod dbgu;
@@ -20,6 +19,9 @@ mod logger;
 #[macro_use]
 mod memory;
 mod processor;
+mod helpers;
+mod system_timer;
+mod interrupt_controller;
 
 /// Sets stack pointers and calls boot function
 #[no_mangle]
@@ -40,7 +42,12 @@ pub fn boot() {
         env!("CARGO_PKG_VERSION")
     );
 
+    processor::switch_processor_mode_naked(processor::ProcessorMode::System);
     debug!("processor mode {:?}", processor::get_processor_mode());
+
+    system_timer::init_system_timer_interrupt(8000);
+    interrupt_controller::init_system_interrupt();
+    processor::enable_interrupts();
 
     println!("waiting for input... (press ENTER to echo)");
     println!("available commands: swi, undi, dabort, quit");
@@ -95,8 +102,11 @@ pub fn eval_check() -> bool {
                  ldr r0, =0x90000000
                  str r0, [r0]"
             );
-            // write_volatile(0x0 as *mut u32, 0x1);
+
         },
+        "st" => {
+            println!("{}", system_timer::has_system_timer_elapsed());
+        }
         "quit" => {
             return true;
         }

@@ -43,3 +43,13 @@ pub fn switch_processor_mode_naked(new_mode: ProcessorMode) {
         );
     }
 }
+
+pub fn enable_interrupts() {
+    unsafe {
+        asm!("
+            MRS r0, CPSR
+            BIC r0, r0, #0x80
+            MSR    CPSR_c, r0
+        ")
+    }
+}

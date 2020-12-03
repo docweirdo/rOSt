@@ -3,8 +3,8 @@ use crate::processor;
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
-    ptr::{self, read_volatile, write_volatile},
 };
+use crate::helpers;
 
 const SRAM_END: usize = 0x0020_4000;
 const STACK_SIZE: usize = 1024 * 2;
@@ -16,17 +16,17 @@ pub const SP_SVC_START: usize = SRAM_END - 3 * STACK_SIZE;
 pub const SP_ABT_START: usize = SRAM_END - 4 * STACK_SIZE;
 pub const SP_UND_START: usize = SRAM_END - 5 * STACK_SIZE;
 
-const MC: *mut u32 = 0xFFFFFF00 as *mut u32;
-const MC_RCR: isize = 0x0;
-const MC_ASR: isize = 0x4;
-const MC_AASR: isize = 0x8;
+const MC: u32 = 0xFFFFFF00;
+const MC_RCR: u32 = 0x0;
+const MC_ASR: u32 = 0x4;
+const MC_AASR: u32 = 0x8;
 
 pub fn toggle_memory_remap() {
-    unsafe { write_volatile(MC.offset(MC_RCR / 4), 1 as u32) }
+    helpers::write_register(MC, MC_RCR, 1);
 }
 
 pub fn mc_get_abort_address() -> u32 {
-    unsafe { read_volatile(MC.offset(MC_AASR / 4)) }
+    helpers::read_register(MC, MC_AASR)
 }
 
 #[macro_export]
@@ -73,7 +73,7 @@ unsafe impl GlobalAlloc for BumpPointerAlloc {
 
         if start + size > self.end {
             // a null pointer signal an Out Of Memory condition
-            ptr::null_mut()
+            core::ptr::null_mut()
         } else {
             *head = start + size;
             start as *mut u8
