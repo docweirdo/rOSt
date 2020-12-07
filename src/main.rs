@@ -15,18 +15,19 @@ use log::{debug, error, info};
 mod dbgu;
 mod exceptions;
 mod fmt;
+mod helpers;
+mod interrupt_controller;
 mod logger;
 mod memory;
 mod processor;
-mod helpers;
 mod system_timer;
-mod interrupt_controller;
 
 /// Sets stack pointers and calls boot function
 #[no_mangle]
 #[naked]
 pub extern "C" fn _start() -> ! {
     memory::init_processor_mode_stacks!();
+    processor::switch_processor_mode!(processor::ProcessorMode::System);
 
     boot();
     loop {}
@@ -40,12 +41,16 @@ pub fn boot() {
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION")
     );
-
-    processor::switch_processor_mode!(processor::ProcessorMode::System);
     debug!("processor mode {:?}", processor::get_processor_mode());
 
-    system_timer::init_system_timer_interrupt(8000);
-    interrupt_controller::init_system_interrupt();
+    system_timer::init_system_timer_interrupt(16000);
+    interrupt_controller::init_system_interrupt(|| {
+        debug!("Interrupt Handler for interrupt line 1");
+        unsafe {
+            asm!("swi #0");
+        }
+        debug!("processor mode {:?}\n", processor::get_processor_mode());
+    });
     processor::set_interrupts_enabled!(true);
 
     println!("waiting for input... (press ENTER to echo)");
@@ -101,7 +106,6 @@ pub fn eval_check() -> bool {
                  ldr r0, =0x90000000
                  str r0, [r0]"
             );
-
         },
         "st" => {
             println!("{}", system_timer::has_system_timer_elapsed());
@@ -119,6 +123,8 @@ pub fn eval_check() -> bool {
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    println!("panic handler");
+    //TODO: Rausfinden warum es manchmal mit stack oder ohne funktioniert bzw nicht funktioniert
+    print_with_stack!("panic handler");
+    print_with_stack!("{}", _info);
     loop {}
 }

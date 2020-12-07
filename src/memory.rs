@@ -1,10 +1,10 @@
+use crate::helpers;
 use crate::println;
 use crate::processor;
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
 };
-use crate::helpers;
 
 const SRAM_END: usize = 0x0020_4000;
 const STACK_SIZE: usize = 1024 * 2;
@@ -28,7 +28,6 @@ pub fn toggle_memory_remap() {
 pub fn mc_get_abort_address() -> u32 {
     helpers::read_register(MC, MC_AASR)
 }
-
 
 macro_rules! _init_processor_mode_stacks {
     () => {

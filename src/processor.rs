@@ -49,23 +49,27 @@ pub(crate) use _switch_processor_mode as switch_processor_mode;
 /// Clobbers r0.
 macro_rules! _set_interrupts_enabled {
     (false) => {
-        unsafe{
-            asm!("
+        unsafe {
+            asm!(
+                "
                 MRS r0, CPSR
                 ORR r0, r0, #0x80
                 MSR    CPSR_c, r0
-            ")
+            "
+            )
         }
     };
     (true) => {
-        unsafe{
-            asm!("
+        unsafe {
+            asm!(
+                "
                 MRS r0, CPSR
                 BIC r0, r0, #0x80
                 MSR    CPSR_c, r0
-            ")
+            "
+            )
         }
-    }
+    };
 }
 
 pub(crate) use _set_interrupts_enabled as set_interrupts_enabled;
@@ -78,35 +82,35 @@ pub(crate) use _set_interrupts_enabled as set_interrupts_enabled;
 /// enable nested interrupts while using function calls, without the risk  
 /// of corrupting the link register by a second exception to the same exception mode.
 macro_rules! _exception_routine {
-    ($subcall:expr, $lr_size:expr) => {
+    ($subcall:ident, $lr_size:expr) => {
         #[allow(unused_unsafe)]
         unsafe {
             asm!("
-                stmfd sp!, {{r0-r12, r14}}
+                push {{r0-r12, r14}}
                 mrs r14, SPSR
                 mrs r12, CPSR
-                stmfd sp!, {{r14}}
+                push {{r14}}
             ", );
             processor::switch_processor_mode!(processor::ProcessorMode::System);
-            processor::set_interrupts_enabled!(true);
-            asm!("stmfd sp!, {{r12, lr}}");
-            $subcall
+            //processor::set_interrupts_enabled!(true);
+            asm!("push {{r12, r14}}");
+            $subcall();
             asm!("
-                ldmfd sp!, {{r12, lr}}
+                pop {{r12, r14}}
                 msr CPSR, r12
             ");
-            //interrupt_controller::set_interrupts_enabled!(false);
-            //switch_processor_mode!(processor::ProcessorMode::IRQ);
+            // processor::set_interrupts_enabled!(false);
+            // processor::switch_processor_mode!(processor::ProcessorMode::IRQ);
             $crate::interrupt_controller::mark_end_of_interrupt!();
             asm!("
-                ldmfd sp!, {{r14}}
+                pop {{r14}}
                 msr SPSR, r14 
-                ldmfd sp!, {{r0-r12, r14}}
+                pop {{r0-r12, r14}}
                 subs pc, lr, #{}
             ", const $lr_size);
+            asm!("", options(noreturn));
         }
     };
 }
 
 pub(crate) use _exception_routine as exception_routine;
-
