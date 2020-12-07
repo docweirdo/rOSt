@@ -33,22 +33,23 @@ pub fn init_system_interrupt() {
 fn logging() {
   debug!("Interrupt Handler for interrupt line 1");
   debug!("processor mode {:?}", processor::get_processor_mode());
-  write_register(AIC, AIC_EOICR, 1);
 }
+
+macro_rules! _mark_end_of_interrupt{
+    () => {
+        unsafe { asm!("
+            ldr r0, ={}
+            str r0, [r0, #{}]
+        ", const AIC, const AIC_EOICR) };
+    }
+}
+
+pub(crate) use _mark_end_of_interrupt as mark_end_of_interrupt;
+
 
 #[naked]
 pub extern fn handler (){
-    unsafe { 
-        asm!("
-            PUSH {{r0-r12}}
-            PUSH {{lr}}
-        "); 
-    }
-    logging();
-    unsafe { 
-        asm!("
-            POP {{lr}}
-            POP {{r0-r12}}
-            SUBS pc, lr, #4"); 
-    }
+    processor::exception_routine!({
+        logging();
+    }, 4);
 }

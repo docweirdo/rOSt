@@ -16,7 +16,6 @@ mod dbgu;
 mod exceptions;
 mod fmt;
 mod logger;
-#[macro_use]
 mod memory;
 mod processor;
 mod helpers;
@@ -27,7 +26,7 @@ mod interrupt_controller;
 #[no_mangle]
 #[naked]
 pub extern "C" fn _start() -> ! {
-    init_processor_mode_stacks!();
+    memory::init_processor_mode_stacks!();
 
     boot();
     loop {}
@@ -42,12 +41,12 @@ pub fn boot() {
         env!("CARGO_PKG_VERSION")
     );
 
-    processor::switch_processor_mode_naked(processor::ProcessorMode::System);
+    processor::switch_processor_mode!(processor::ProcessorMode::System);
     debug!("processor mode {:?}", processor::get_processor_mode());
 
     system_timer::init_system_timer_interrupt(8000);
     interrupt_controller::init_system_interrupt();
-    processor::enable_interrupts();
+    processor::set_interrupts_enabled!(true);
 
     println!("waiting for input... (press ENTER to echo)");
     println!("available commands: swi, undi, dabort, quit");

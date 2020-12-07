@@ -18,7 +18,7 @@ pub const SP_UND_START: usize = SRAM_END - 5 * STACK_SIZE;
 
 const MC: u32 = 0xFFFFFF00;
 const MC_RCR: u32 = 0x0;
-const MC_ASR: u32 = 0x4;
+// const MC_ASR: u32 = 0x4;
 const MC_AASR: u32 = 0x8;
 
 pub fn toggle_memory_remap() {
@@ -29,26 +29,30 @@ pub fn mc_get_abort_address() -> u32 {
     helpers::read_register(MC, MC_AASR)
 }
 
-#[macro_export]
-macro_rules! init_processor_mode_stacks {
+
+macro_rules! _init_processor_mode_stacks {
     () => {
+        #[allow(unused_unsafe)]
         unsafe {
+            use crate::processor;
             asm!("ldr sp, ={}",  const memory::SP_SVC_START);
-            processor::switch_processor_mode_naked(processor::ProcessorMode::FIQ);
+            processor::switch_processor_mode!(processor::ProcessorMode::FIQ);
             asm!("ldr sp, ={}",  const memory::SP_FIQ_START);
-            processor::switch_processor_mode_naked(processor::ProcessorMode::IRQ);
+            processor::switch_processor_mode!(processor::ProcessorMode::IRQ);
             asm!("ldr sp, ={}",  const memory::SP_IRQ_START);
-            processor::switch_processor_mode_naked(processor::ProcessorMode::Abort);
+            processor::switch_processor_mode!(processor::ProcessorMode::Abort);
             asm!("ldr sp, ={}",  const memory::SP_ABT_START);
-            processor::switch_processor_mode_naked(processor::ProcessorMode::Undefined);
+            processor::switch_processor_mode!(processor::ProcessorMode::Undefined);
             asm!("ldr sp, ={}",  const memory::SP_UND_START);
-            processor::switch_processor_mode_naked(processor::ProcessorMode::System);
+            processor::switch_processor_mode!(processor::ProcessorMode::System);
             asm!("ldr sp, ={}",  const memory::SP_USER_SYSTEM_START);
-            processor::switch_processor_mode_naked(processor::ProcessorMode::Supervisor);
+            processor::switch_processor_mode!(processor::ProcessorMode::Supervisor);
         }
     };
 
 }
+
+pub(crate) use _init_processor_mode_stacks as init_processor_mode_stacks;
 
 // https://rust-embedded.github.io/book/collections/index.html?using-alloc
 

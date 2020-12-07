@@ -14,7 +14,7 @@ unsafe extern "C" fn UndefinedInstructionHandler() -> ! {
     println!("undefined instruction handler");
     debug!("processor mode {:?}", processor::get_processor_mode());
 
-    let mut lr: usize = 0xDEADBEEF;
+    let mut lr: usize;
     asm!("mov {}, r14", out(reg) lr);
     println!("undefined instruction at {:#X}", lr - 4);
     panic!();
@@ -26,7 +26,7 @@ unsafe extern "C" fn SoftwareInterruptHandler() -> ! {
     println!("software interrupt handler");
     debug!("processor mode {:?}", processor::get_processor_mode());
 
-    let mut lr: usize = 0xDEADBEEF;
+    let mut lr: usize;
     asm!("mov {}, r14", out(reg) lr);
     println!("software interrupt at {:#X}", lr - 4);
     panic!();
@@ -43,7 +43,7 @@ unsafe extern "C" fn DataAbortHandler() -> ! {
     println!("data abort handler");
     debug!("processor mode {:?}", processor::get_processor_mode());
 
-    let mut lr: usize = 0xDEADBEEF;
+    let mut lr: usize;
     asm!("mov {}, pc", out(reg) lr);
     println!(
         "data abort at {:#X} for address {:#X}",

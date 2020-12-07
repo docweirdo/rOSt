@@ -27,6 +27,7 @@ DBGU_SR 0x0014  Status Register => TXRDY = bit 1
 //Base Addresses
 //const PIO_A: *mut u32 = 0xFFFFF400 as *mut u32;
 struct DBGU;
+#[allow(dead_code)]
 impl DBGU {
     /// DBGU Base Address
     const BASE_ADDRESS: u32 = 0xFFFFF200;
@@ -74,19 +75,19 @@ pub unsafe fn dbgu_setup() {
 */
 
 pub fn is_char_available() -> bool {
-    unsafe {
+
         return helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::RXRDY) != 0;
-    }
+    
 }
 
 pub fn read_char() -> u32 {
-    unsafe { helpers::read_register(DBGU::BASE_ADDRESS, DBGU::RHR) }
+  helpers::read_register(DBGU::BASE_ADDRESS, DBGU::RHR) 
 }
 
 pub fn write_char(character: char) {
-    unsafe {
+ 
         if helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::TXRDY) != 0 {
             helpers::write_register(DBGU::BASE_ADDRESS, DBGU::THR, character as u32);
         }
-    }
+    
 }
