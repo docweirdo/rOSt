@@ -36,6 +36,7 @@ pub extern "C" fn _start() -> ! {
 pub fn boot() {
     memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
     logger::init_logger();
+    dbgu::set_dbgu_recv_interrupt(true);
     println!(
         "{} {}: the start",
         env!("CARGO_PKG_NAME"),
@@ -43,14 +44,17 @@ pub fn boot() {
     );
     debug!("processor mode {:?}", processor::get_processor_mode());
 
-    system_timer::init_system_timer_interrupt(16000);
+    //system_timer::init_system_timer_interrupt(0);
     interrupt_controller::init_system_interrupt(|| {
         debug!("Interrupt Handler for interrupt line 1");
         unsafe {
             asm!("swi #0");
         }
         debug!("processor mode {:?}\n", processor::get_processor_mode());
+    }, || {
+        print!("{}", dbgu::read_char() as u8 as char);
     });
+
     processor::set_interrupts_enabled!(true);
 
     println!("waiting for input... (press ENTER to echo)");

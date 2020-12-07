@@ -24,7 +24,7 @@ pub fn get_processor_mode() -> ProcessorMode {
     ProcessorMode::from_u8((cpsr & 0x1F) as u8).unwrap()
 }
 
-/// Switches the processor to the specified mode.
+/// Switches the processor to the specified mode.  
 /// Requires the caller to be in a priviliged mode.  
 /// Clobbers r0.
 macro_rules! _switch_processor_mode {
@@ -44,7 +44,7 @@ macro_rules! _switch_processor_mode {
 
 pub(crate) use _switch_processor_mode as switch_processor_mode;
 
-/// Either sets or unsets the interrupt mask bit in the processor status word.
+/// Either sets or unsets the interrupt mask bit in the processor status word.  
 /// Requires the caller to be in priviliged mode.  
 /// Clobbers r0.
 macro_rules! _set_interrupts_enabled {
@@ -82,7 +82,7 @@ pub(crate) use _set_interrupts_enabled as set_interrupts_enabled;
 /// enable nested interrupts while using function calls, without the risk  
 /// of corrupting the link register by a second exception to the same exception mode.
 macro_rules! _exception_routine {
-    ($subcall:ident, $lr_size:expr) => {
+    ($subcall:ident, $lr_size:expr, $enable_msk_intr:expr, $mark_intr_end:expr) => {
         #[allow(unused_unsafe)]
         unsafe {
             asm!("
@@ -92,7 +92,7 @@ macro_rules! _exception_routine {
                 push {{r14}}
             ", );
             processor::switch_processor_mode!(processor::ProcessorMode::System);
-            //processor::set_interrupts_enabled!(true);
+            if $enable_msk_intr {processor::set_interrupts_enabled!(true);}
             asm!("push {{r12, r14}}");
             $subcall();
             asm!("
@@ -101,7 +101,7 @@ macro_rules! _exception_routine {
             ");
             // processor::set_interrupts_enabled!(false);
             // processor::switch_processor_mode!(processor::ProcessorMode::IRQ);
-            $crate::interrupt_controller::mark_end_of_interrupt!();
+            if $mark_intr_end {crate::interrupt_controller::mark_end_of_interrupt!();}
             asm!("
                 pop {{r14}}
                 msr SPSR, r14 

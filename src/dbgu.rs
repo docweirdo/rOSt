@@ -32,8 +32,17 @@ impl DBGU {
     /// DBGU Base Address
     const BASE_ADDRESS: u32 = 0xFFFFF200;
 
-    // Control Register Offset
-    const CR: isize = 0x0000;
+    /// Control Register Offset
+    const CR: u32 = 0x0000;
+
+    /// Interrupt Enable Register Offset
+    const IER: u32 = 0x0008;
+
+    /// Interrupt Disable Register Offset
+    const IDR: u32 = 0x000C;
+
+    /// Interrupt Mask Register Offset
+    const IMR: u32 = 0x0010;
 
     /// Status Register Offset
     const SR: u32 = 0x0014;
@@ -42,8 +51,8 @@ impl DBGU {
     /// Transmit Holding Register Offset
     const THR: u32 = 0x001C;
 
-    // Baud Rate Generator Register Offset
-    const BRGR: isize = 0x0020;
+    /// Baud Rate Generator Register Offset
+    const BRGR: u32 = 0x0020;
 
     /// DBGU_SR - Status Register Bits
 
@@ -73,6 +82,14 @@ pub unsafe fn dbgu_setup() {
     // write_volatile(DBGU.offset(DBGU_BRGR / 4), 65536);
 //}
 */
+
+pub fn set_dbgu_recv_interrupt(value: bool){
+    if value{
+        helpers::write_register(DBGU::BASE_ADDRESS, DBGU::IER, 0x1);
+    } else {
+        helpers::write_register(DBGU::BASE_ADDRESS, DBGU::IDR, 0x1);
+    }
+}
 
 pub fn is_char_available() -> bool {
 

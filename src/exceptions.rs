@@ -23,7 +23,7 @@ unsafe extern "C" fn UndefinedInstructionHandler() -> ! {
         }
         println!("undefined instruction at {:#X}", lr - 4);
     }
-    processor::exception_routine!(handler, 4);
+    processor::exception_routine!(handler, 4, false, false);
 }
 
 #[no_mangle]
@@ -38,7 +38,7 @@ unsafe extern "C" fn SoftwareInterruptHandler() -> ! {
         }
         println!("software interrupt at {:#X}", lr - 4);
     };
-    processor::exception_routine!(handler, 0);
+    processor::exception_routine!(handler, 0, false, false);
 }
 
 #[no_mangle]
@@ -53,7 +53,7 @@ unsafe extern "C" fn PrefetchAbortHandler() -> ! {
         }
         println!("prefetch abort at {:#X}", lr - 4);
     };
-    processor::exception_routine!(handler, 4);
+    processor::exception_routine!(handler, 4, false, false);
 }
 
 #[no_mangle]
@@ -73,5 +73,5 @@ unsafe extern "C" fn DataAbortHandler() -> ! {
             memory::mc_get_abort_address() // doesn't work in the emulator
         );
     };
-    processor::exception_routine!(handler, 4);
+    processor::exception_routine!(handler, 4, false, false);
 }
