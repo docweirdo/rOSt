@@ -39,22 +39,25 @@ pub extern "C" fn _start() -> ! {
 static mut DBGU_BUFFER: Vec<char> = Vec::<char>::new();
 static mut PRINT_SYSTEM_TIMER_TASK3: bool = false;
 
+/// Initializes the operating system
 pub fn boot() {
     memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
-    logger::init_logger();
-    dbgu::set_dbgu_recv_interrupt(true);
+
     println!(
         "{} {}: the start",
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION")
     );
+
+    logger::init_logger();
     debug!("processor mode {:?}", processor::get_processor_mode());
 
+    // Initialize needed interrupts
+
     system_timer::init_system_timer_interrupt(12000);
+    dbgu::set_dbgu_recv_interrupt(true);
     interrupt_controller::init_system_interrupt(
         || {
-            //debug!("Interrupt Handler for interrupt line 1");
-            //debug!("processor mode {:?}\n", processor::get_processor_mode());
             if unsafe { PRINT_SYSTEM_TIMER_TASK3 } {
                 println!("!");
             }
@@ -66,8 +69,9 @@ pub fn boot() {
             )
         },
     );
-
     processor::set_interrupts_enabled!(true);
+
+    // Switch to user code
 
     loop {
         if eval_check() {
@@ -83,11 +87,14 @@ const KEY_ENTER: char = 0xD as char;
 const KEY_BACKSPACE: char = 0x8 as char;
 const KEY_DELETE: char = 0x7F as char;
 
+/// Simple Read–eval–print loop with some basic commands
 pub fn eval_check() -> bool {
     let mut rng = Pcg64::seed_from_u64(0xDEADBEEF);
     let mut char_buf = alloc::string::String::new();
+
     println!("waiting for input... (press ENTER to echo)");
-    println!("available commands: task3, st, swi, undi, dabort, quit");
+    println!("available commands: task3, uptime, swi, undi, dabort, quit");
+
     loop {
         if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
             if last_char == KEY_ENTER {
@@ -122,8 +129,8 @@ pub fn eval_check() -> bool {
                  str r0, [r0]"
             );
         },
-        "st" => {
-            println!("{}", system_timer::has_system_timer_elapsed());
+        "uptime" => {
+            println!("{}", system_timer::get_current_real_time());
         }
         "task3" => {
             unsafe {
@@ -169,9 +176,10 @@ pub fn eval_check() -> bool {
     false
 }
 
+/// Rust panic handler
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    //TODO: Rausfinden warum es manchmal mit stack oder ohne funktioniert bzw nicht funktioniert
+    // TODO: print with stack or heap? why does it crash sometimes?
     print_with_stack!("panic handler");
     print_with_stack!("{}", _info);
     loop {}
