@@ -33,4 +33,5 @@ This is a project for university containing bits and pieces of what might become
 * work addresses and offsets into structs for each component
 * implement proper allocator
 * convert exception_routine macro to nice macro :D
-* etc
+* fix nested exceptions (swi in intq)
+* test for proper stack usage and size

@@ -29,6 +29,7 @@ impl ST {
 pub fn init_system_timer_interrupt(value: u16) {
     write_register(ST::BASE_ADDRESS, ST::IER, 0x1);
 
+    //Todo: export in own function
     write_register(ST::BASE_ADDRESS, ST::RTMR, 0x64);
     write_register(ST::BASE_ADDRESS, ST::PIMR, value as u32);
 }

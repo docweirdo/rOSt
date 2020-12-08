@@ -12,17 +12,16 @@ MEMORY {
 
 SECTIONS
 {
-
   .vector_table :
   {
-      *(.ExceptionsJump);
+    *(.ExceptionsJump);
   } > SRAM
 
-   .text : {
-      *(.text);
-  } > SDRAM 
+  .text : {
+    *(.text);
+  } > SDRAM
 
-
+  
   /DISCARD/ :
   {
     /* Unused exception related info that only wastes space */

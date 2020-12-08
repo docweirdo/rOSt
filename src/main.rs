@@ -54,7 +54,7 @@ pub fn boot() {
 
     // Initialize needed interrupts
 
-    system_timer::init_system_timer_interrupt(12000);
+    system_timer::init_system_timer_interrupt(32000);
     dbgu::set_dbgu_recv_interrupt(true);
     interrupt_controller::init_system_interrupt(
         || {
