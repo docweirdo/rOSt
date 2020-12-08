@@ -58,7 +58,8 @@ extern "C" fn trampoline() {
                 if SYS_TIMER_INTERRUPT_HANDLER.is_some() {
                     SYS_TIMER_INTERRUPT_HANDLER.as_mut().unwrap()();
                 }
-            } else {
+            }
+            if super::dbgu::is_char_available() {
                 if DBGU_INTERRUPT_HANDLER.is_some() {
                     DBGU_INTERRUPT_HANDLER.as_mut().unwrap()();
                 }

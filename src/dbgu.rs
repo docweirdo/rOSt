@@ -62,8 +62,6 @@ impl DBGU {
     const TXRDY: u32 = 1;
 }
 
-
-
 /*
 pub unsafe fn dbgu_setup() {
     //Disable PIO Controll
@@ -83,28 +81,33 @@ pub unsafe fn dbgu_setup() {
 //}
 */
 
-pub fn set_dbgu_recv_interrupt(value: bool){
-    if value{
+/// Enable or disable DBGU Receive Interrupt
+pub fn set_dbgu_recv_interrupt(value: bool) {
+    if value {
         helpers::write_register(DBGU::BASE_ADDRESS, DBGU::IER, 0x1);
     } else {
         helpers::write_register(DBGU::BASE_ADDRESS, DBGU::IDR, 0x1);
     }
 }
 
+/// Checks if the DBGU receive holding register holds a character
 pub fn is_char_available() -> bool {
-
-        return helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::RXRDY) != 0;
-    
+    return helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::RXRDY) != 0;
 }
 
-pub fn read_char() -> u32 {
-  helpers::read_register(DBGU::BASE_ADDRESS, DBGU::RHR) 
+/// Returns a character from the DBGU Receive Holding Register or None if not available
+pub fn read_char() -> Option<u32> {
+    if is_char_available() {
+        Some(helpers::read_register(DBGU::BASE_ADDRESS, DBGU::RHR))
+    } else {
+        None
+    }
 }
 
+/// Writes a character to the DBGU Transmit Holding Register when the DBGU is ready
+/// TODO: Loop or return error if not ready?
 pub fn write_char(character: char) {
- 
-        if helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::TXRDY) != 0 {
-            helpers::write_register(DBGU::BASE_ADDRESS, DBGU::THR, character as u32);
-        }
-    
+    if helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::TXRDY) != 0 {
+        helpers::write_register(DBGU::BASE_ADDRESS, DBGU::THR, character as u32);
+    }
 }

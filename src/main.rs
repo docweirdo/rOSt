@@ -9,6 +9,7 @@
 extern crate num_derive;
 extern crate alloc;
 
+use alloc::vec::Vec;
 use core::panic::PanicInfo;
 use log::{debug, error, info};
 use rand::prelude::*;
@@ -35,6 +36,9 @@ pub extern "C" fn _start() -> ! {
     loop {}
 }
 
+static mut DBGU_BUFFER: Vec<char> = Vec::<char>::new();
+static mut PRINT_SYSTEM_TIMER_TASK3: bool = false;
+
 pub fn boot() {
     memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
     logger::init_logger();
@@ -46,47 +50,24 @@ pub fn boot() {
     );
     debug!("processor mode {:?}", processor::get_processor_mode());
 
-    let mut rng = Pcg64::seed_from_u64(0xDEADBEEF);
-
     system_timer::init_system_timer_interrupt(12000);
     interrupt_controller::init_system_interrupt(
         || {
             //debug!("Interrupt Handler for interrupt line 1");
             //debug!("processor mode {:?}\n", processor::get_processor_mode());
-            println!("!");
+            if unsafe { PRINT_SYSTEM_TIMER_TASK3 } {
+                println!("!");
+            }
         },
-        move || {
-            let received_char = dbgu::read_char() as u8 as char;
-            for _ in 0..rng.gen_range(10, 20) {
-                print!("{}", received_char);
-            }
-            println!();
-            let last = system_timer::get_current_real_time();
-            loop {
-                if system_timer::get_current_real_time() - last > 500 {
-                    break;
-                }
-            }
-            for _ in 0..rng.gen_range(10, 20) {
-                print!("{}", received_char);
-            }
-            println!();
-            let last = system_timer::get_current_real_time();
-            loop {
-                if system_timer::get_current_real_time() - last > 500 {
-                    break;
-                }
-            }
-            for _ in 0..rng.gen_range(10, 20) {
-                print!("{}", received_char);
-            }
+        move || unsafe {
+            DBGU_BUFFER.push(
+                dbgu::read_char().expect("there should be char availabe in interrupt") as u8
+                    as char,
+            )
         },
     );
 
     processor::set_interrupts_enabled!(true);
-
-    println!("waiting for input... (press ENTER to echo)");
-    println!("available commands: swi, undi, dabort, quit");
 
     loop {
         if eval_check() {
@@ -98,22 +79,24 @@ pub fn boot() {
     panic!();
 }
 
-const KEY_ENTER: u32 = 0xD;
-const KEY_BACKSPACE: u32 = 0x8;
-const KEY_DELETE: u32 = 0x7F;
+const KEY_ENTER: char = 0xD as char;
+const KEY_BACKSPACE: char = 0x8 as char;
+const KEY_DELETE: char = 0x7F as char;
 
 pub fn eval_check() -> bool {
+    let mut rng = Pcg64::seed_from_u64(0xDEADBEEF);
     let mut char_buf = alloc::string::String::new();
+    println!("waiting for input... (press ENTER to echo)");
+    println!("available commands: task3, st, swi, undi, dabort, quit");
     loop {
-        if dbgu::is_char_available() {
-            let last_char = dbgu::read_char();
+        if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
             if last_char == KEY_ENTER {
                 break;
             }
             if last_char == KEY_DELETE || last_char == KEY_BACKSPACE {
                 char_buf.pop();
             } else {
-                char_buf.push(core::char::from_u32(last_char).expect("fail to convert"));
+                char_buf.push(last_char);
             }
         }
     }
@@ -141,6 +124,39 @@ pub fn eval_check() -> bool {
         },
         "st" => {
             println!("{}", system_timer::has_system_timer_elapsed());
+        }
+        "task3" => {
+            unsafe {
+                PRINT_SYSTEM_TIMER_TASK3 = true;
+            }
+            loop {
+                if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
+                    if last_char == 'q' {
+                        unsafe {
+                            PRINT_SYSTEM_TIMER_TASK3 = false;
+                        }
+                        break;
+                    }
+                    fn wait(units: u32) {
+                        let last = system_timer::get_current_real_time();
+                        loop {
+                            if system_timer::get_current_real_time() - last > units {
+                                break;
+                            }
+                        }
+                    }
+                    let mut print_character_random = |c: char, min: usize, max: usize| {
+                        for _ in 0..rng.gen_range(min, max) {
+                            print!("{}", c);
+                        }
+                    };
+                    print_character_random(last_char, 1, 20);
+                    wait(500);
+                    print_character_random(last_char, 1, 20);
+                    wait(500);
+                    print_character_random(last_char, 1, 20);
+                }
+            }
         }
         "quit" => {
             return true;
