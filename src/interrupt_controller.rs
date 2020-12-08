@@ -5,11 +5,9 @@ use crate::processor;
 use crate::system_timer;
 use log::debug;
 
-
 pub struct AIC;
 #[allow(dead_code)]
 impl AIC {
-
     /// Advanced Interrupt Controller base address
     pub const BASE_ADDRESS: u32 = 0xFFFFF000;
 
@@ -24,14 +22,17 @@ impl AIC {
 
     /// End of Interrupt Command Register
     pub const EOICR: u32 = 0x130;
-
 }
 
-static mut SYS_TIMER_INTERRUPT_HANDLER: Option<alloc::boxed::Box<dyn Fn()>> = None;
-static mut DBGU_INTERRUPT_HANDLER: Option<alloc::boxed::Box<dyn Fn()>> = None;
+static mut SYS_TIMER_INTERRUPT_HANDLER: Option<alloc::boxed::Box<dyn FnMut()>> = None;
+static mut DBGU_INTERRUPT_HANDLER: Option<alloc::boxed::Box<dyn FnMut()>> = None;
 
 /// Sets system interrupt vector and enables the interrupt.
-pub fn init_system_interrupt(sys_timer_interrrupt_handler: fn(), dbgu_interrupt_handler: fn()) {
+pub fn init_system_interrupt<F, G>(sys_timer_interrrupt_handler: F, dbgu_interrupt_handler: G)
+where
+    F: FnMut() + 'static,
+    G: FnMut() + 'static,
+{
     unsafe {
         SYS_TIMER_INTERRUPT_HANDLER = Some(alloc::boxed::Box::new(sys_timer_interrrupt_handler));
         DBGU_INTERRUPT_HANDLER = Some(alloc::boxed::Box::new(dbgu_interrupt_handler));
@@ -51,26 +52,20 @@ pub fn init_system_interrupt(sys_timer_interrrupt_handler: fn(), dbgu_interrupt_
 extern "C" fn trampoline() {
     fn handler() {
         unsafe {
-            let mut sp: usize;
-            unsafe {
-                asm!("mov {}, sp", out(reg) sp);
-            }
-            debug!("sp {:X}", sp);
-
-            if system_timer::get_periodic_interrupts_enabled() && system_timer::has_system_timer_elapsed(){
+            if system_timer::get_periodic_interrupts_enabled()
+                && system_timer::has_system_timer_elapsed()
+            {
                 if SYS_TIMER_INTERRUPT_HANDLER.is_some() {
-                    SYS_TIMER_INTERRUPT_HANDLER.as_ref().unwrap()();
+                    SYS_TIMER_INTERRUPT_HANDLER.as_mut().unwrap()();
                 }
             } else {
                 if DBGU_INTERRUPT_HANDLER.is_some() {
-                    DBGU_INTERRUPT_HANDLER.as_ref().unwrap()();
+                    DBGU_INTERRUPT_HANDLER.as_mut().unwrap()();
                 }
             }
-
-            // debug!("spsadssp");
         }
     }
-    processor::exception_routine!(handler, 4, false, true);
+    processor::exception_routine!(handler, 4, true, true);
 }
 
 macro_rules! _mark_end_of_interrupt{

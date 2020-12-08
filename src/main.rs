@@ -11,6 +11,8 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 use log::{debug, error, info};
+use rand::prelude::*;
+use rand_pcg::Pcg64;
 
 mod dbgu;
 mod exceptions;
@@ -44,16 +46,42 @@ pub fn boot() {
     );
     debug!("processor mode {:?}", processor::get_processor_mode());
 
-    //system_timer::init_system_timer_interrupt(0);
-    interrupt_controller::init_system_interrupt(|| {
-        debug!("Interrupt Handler for interrupt line 1");
-        unsafe {
-            asm!("swi #0");
-        }
-        debug!("processor mode {:?}\n", processor::get_processor_mode());
-    }, || {
-        print!("{}", dbgu::read_char() as u8 as char);
-    });
+    let mut rng = Pcg64::seed_from_u64(0xDEADBEEF);
+
+    system_timer::init_system_timer_interrupt(12000);
+    interrupt_controller::init_system_interrupt(
+        || {
+            //debug!("Interrupt Handler for interrupt line 1");
+            //debug!("processor mode {:?}\n", processor::get_processor_mode());
+            println!("!");
+        },
+        move || {
+            let received_char = dbgu::read_char() as u8 as char;
+            for _ in 0..rng.gen_range(10, 20) {
+                print!("{}", received_char);
+            }
+            println!();
+            let last = system_timer::get_current_real_time();
+            loop {
+                if system_timer::get_current_real_time() - last > 500 {
+                    break;
+                }
+            }
+            for _ in 0..rng.gen_range(10, 20) {
+                print!("{}", received_char);
+            }
+            println!();
+            let last = system_timer::get_current_real_time();
+            loop {
+                if system_timer::get_current_real_time() - last > 500 {
+                    break;
+                }
+            }
+            for _ in 0..rng.gen_range(10, 20) {
+                print!("{}", received_char);
+            }
+        },
+    );
 
     processor::set_interrupts_enabled!(true);
 

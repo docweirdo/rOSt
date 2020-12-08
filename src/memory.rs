@@ -6,8 +6,8 @@ use core::{
     cell::UnsafeCell,
 };
 
-const SRAM_END: usize = 0x0020_4000;
-const STACK_SIZE: usize = 1024 * 2;
+const SRAM_END: usize = 0x2300_0000;
+const STACK_SIZE: usize = 1024 * 4;
 
 pub const SP_USER_SYSTEM_START: usize = SRAM_END - 0 * STACK_SIZE; // end of SRAM
 pub const SP_FIQ_START: usize = SRAM_END - 1 * STACK_SIZE;
