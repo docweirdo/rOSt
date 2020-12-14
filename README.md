@@ -35,3 +35,5 @@ This is a project for university containing bits and pieces of what might become
 * convert exception_routine macro to nice macro :D
 * fix nested exceptions (swi in intq)
 * test for proper stack usage and size
+* prepare for new naked macro
+* implement correct differentiation for system interrupt handler (line 1)
