@@ -37,3 +37,4 @@ This is a project for university containing bits and pieces of what might become
 * test for proper stack usage and size
 * prepare for new naked macro
 * implement correct differentiation for system interrupt handler (line 1)
+* document every important function, macro or variable

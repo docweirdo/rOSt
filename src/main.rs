@@ -54,15 +54,20 @@ pub fn boot() {
 
     // Initialize needed interrupts
 
+    // set the wanted interval for the system timer
     system_timer::init_system_timer_interrupt(32000);
     dbgu::set_dbgu_recv_interrupt(true);
     interrupt_controller::init_system_interrupt(
         || {
+            // sys_timer_interrrupt_handler
+            // print ! if task3 app is active
             if unsafe { PRINT_SYSTEM_TIMER_TASK3 } {
                 println!("!");
             }
         },
         move || unsafe {
+            // dbgu_interrupt_handler,fires when rxready is set
+            // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator
             DBGU_BUFFER.push(
                 dbgu::read_char().expect("there should be char availabe in interrupt") as u8
                     as char,
@@ -72,6 +77,7 @@ pub fn boot() {
     processor::set_interrupts_enabled!(true);
 
     // Switch to user code
+    // still missing user process mode switch
 
     loop {
         if eval_check() {
@@ -89,6 +95,7 @@ const KEY_DELETE: char = 0x7F as char;
 
 /// Simple Read–eval–print loop with some basic commands
 pub fn eval_check() -> bool {
+    // initialize rng for task3
     let mut rng = Pcg64::seed_from_u64(0xDEADBEEF);
     let mut char_buf = alloc::string::String::new();
 
@@ -132,18 +139,22 @@ pub fn eval_check() -> bool {
         "uptime" => {
             println!("{}", system_timer::get_current_real_time());
         }
+        // task3 app
         "task3" => {
             unsafe {
                 PRINT_SYSTEM_TIMER_TASK3 = true;
             }
             loop {
+                // check for a new char in the dbgu buffer
                 if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
+                    // quit on q
                     if last_char == 'q' {
                         unsafe {
                             PRINT_SYSTEM_TIMER_TASK3 = false;
                         }
                         break;
                     }
+                    /// wait for x realtime clock units
                     fn wait(units: u32) {
                         let last = system_timer::get_current_real_time();
                         loop {
@@ -152,11 +163,13 @@ pub fn eval_check() -> bool {
                             }
                         }
                     }
+                    // prints a character for a random range between min and max
                     let mut print_character_random = |c: char, min: usize, max: usize| {
                         for _ in 0..rng.gen_range(min, max) {
                             print!("{}", c);
                         }
                     };
+                    // print 3 times and wait between
                     print_character_random(last_char, 1, 20);
                     wait(500);
                     print_character_random(last_char, 1, 20);

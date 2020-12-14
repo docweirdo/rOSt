@@ -25,7 +25,9 @@ impl ST {
     const CRTR: u32 = 0x24;
 }
 
-/// Enables periodic timer interrupt and sets the counter to value.
+/// Enables periodic timer interrupt and sets the periodic counter interval to given value.
+/// Values are counted in downwards a 16-bit register, therefore minimal period is with 1,  
+/// maximum period is with value 0 because of overflow.
 pub fn init_system_timer_interrupt(value: u16) {
     write_register(ST::BASE_ADDRESS, ST::IER, 0x1);
 

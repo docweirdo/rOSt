@@ -49,6 +49,9 @@ where
 
 #[naked]
 #[no_mangle]
+/// This function wraps the exception handler for simple pass over as a function.  
+/// The handler function evaluates wether a specific handler is set before returning    
+/// the address of the handler. The exception macro wraps the handler for correct exception handling.
 extern "C" fn trampoline() {
     fn handler() {
         unsafe {
