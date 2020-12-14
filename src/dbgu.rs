@@ -1,4 +1,4 @@
-use core::ptr::{read_volatile, write_volatile};
+use crate::helpers;
 
 /*
 
@@ -26,28 +26,41 @@ DBGU_SR 0x0014  Status Register => TXRDY = bit 1
 
 //Base Addresses
 //const PIO_A: *mut u32 = 0xFFFFF400 as *mut u32;
-const DBGU: *mut u32 = 0xFFFFF200 as *mut u32;
+struct DBGU;
+#[allow(dead_code)]
+impl DBGU {
+    /// DBGU Base Address
+    const BASE_ADDRESS: u32 = 0xFFFFF200;
 
-//Offsets PIO_A
-//const PIO_PDR: isize = 0x0004;
-//const PIO_ASR: isize = 0x0070;
-//const PIO_PUDR: isize = 0x0060;
+    /// Control Register Offset
+    const CR: u32 = 0x0000;
 
-//Offsets DBGU
-//const DBGU_CR: isize = 0x0000; // Control Register
-const DBGU_SR: isize = 0x0014; // Status Register
-const DBGU_RHR: isize = 0x0018; // Receive Holding Register
-const DBGU_THR: isize = 0x001C; //Transmit Holding Register
+    /// Interrupt Enable Register Offset
+    const IER: u32 = 0x0008;
 
-// const DBGU_BRGR: isize = 0x0020; // Baud Rate Generator Register
+    /// Interrupt Disable Register Offset
+    const IDR: u32 = 0x000C;
 
-//Bits
-//const DBGU_RX: u32 = 1 << 30;
-//const DBGU_TX: u32 = 1 << 31;
+    /// Interrupt Mask Register Offset
+    const IMR: u32 = 0x0010;
 
-// DBGU_SR - Status Register
-const DBGU_TXRDY: u32 = 1 << 1; // Transmitter Ready
-const DBGU_RXRDY: u32 = 1 << 0; // Receiver Ready
+    /// Status Register Offset
+    const SR: u32 = 0x0014;
+    /// Receive Holding Register Offset
+    const RHR: u32 = 0x0018;
+    /// Transmit Holding Register Offset
+    const THR: u32 = 0x001C;
+
+    /// Baud Rate Generator Register Offset
+    const BRGR: u32 = 0x0020;
+
+    /// DBGU_SR - Status Register Bits
+
+    /// Receiver Ready Bit
+    const RXRDY: u32 = 0;
+    /// Transmitter Ready Bit
+    const TXRDY: u32 = 1;
+}
 
 /*
 pub unsafe fn dbgu_setup() {
@@ -68,20 +81,33 @@ pub unsafe fn dbgu_setup() {
 //}
 */
 
-pub fn is_char_available() -> bool {
-    unsafe {
-        return (read_volatile(DBGU.offset(DBGU_SR / 4)) & DBGU_RXRDY) != 0;
+/// Enable or disable DBGU Receive Interrupt
+pub fn set_dbgu_recv_interrupt(value: bool) {
+    if value {
+        helpers::write_register(DBGU::BASE_ADDRESS, DBGU::IER, 0x1);
+    } else {
+        helpers::write_register(DBGU::BASE_ADDRESS, DBGU::IDR, 0x1);
     }
 }
 
-pub fn read_char() -> u32 {
-    unsafe { read_volatile(DBGU.offset(DBGU_RHR / 4)) }
+/// Checks if the DBGU receive holding register holds a character
+pub fn is_char_available() -> bool {
+    return helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::RXRDY) != 0;
 }
 
+/// Returns a character from the DBGU Receive Holding Register or None if not available
+pub fn read_char() -> Option<u32> {
+    if is_char_available() {
+        Some(helpers::read_register(DBGU::BASE_ADDRESS, DBGU::RHR))
+    } else {
+        None
+    }
+}
+
+/// Writes a character to the DBGU Transmit Holding Register when the DBGU is ready
+/// TODO: Loop or return error if not ready?
 pub fn write_char(character: char) {
-    unsafe {
-        if (read_volatile(DBGU.offset(DBGU_SR / 4)) & DBGU_TXRDY) != 0 {
-            write_volatile(DBGU.offset(DBGU_THR / 4), character as u32);
-        }
+    if helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::TXRDY) != 0 {
+        helpers::write_register(DBGU::BASE_ADDRESS, DBGU::THR, character as u32);
     }
 }

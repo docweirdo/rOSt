@@ -27,3 +27,14 @@ This is a project for university containing bits and pieces of what might become
 * Inline assemly in Rust
     * https://blog.rust-lang.org/inside-rust/2020/06/08/new-inline-asm.html
     * https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
+
+### Todo:
+* Test production compilation
+* work addresses and offsets into structs for each component
+* implement proper allocator
+* convert exception_routine macro to nice macro :D
+* fix nested exceptions (swi in intq)
+* test for proper stack usage and size
+* prepare for new naked macro
+* implement correct differentiation for system interrupt handler (line 1)
+* document every important function, macro or variable

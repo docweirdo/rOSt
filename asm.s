@@ -7,5 +7,5 @@ ExceptionsJump:
   b PrefetchAbortHandler
   b DataAbortHandler
   nop
-  b HardwareInterruptHandler
-  b FastInterruptHandler
+  ldr  pc,[pc,# -0xF20]
+  ldr  pc,[pc,# -0xF20]
