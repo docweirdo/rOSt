@@ -4,6 +4,7 @@ use crate::helpers::{read_register, write_register};
 use crate::processor;
 use crate::system_timer;
 use log::debug;
+use rost_macros;
 
 pub struct AIC;
 #[allow(dead_code)]
@@ -38,7 +39,11 @@ where
         DBGU_INTERRUPT_HANDLER = Some(alloc::boxed::Box::new(dbgu_interrupt_handler));
     };
 
-    write_register(AIC::BASE_ADDRESS, AIC::SVR1, trampoline as *mut () as u32);
+    write_register(
+        AIC::BASE_ADDRESS,
+        AIC::SVR1,
+        __portux_Interrupt_trampoline as *mut () as u32,
+    );
 
     let mut status: u32 = read_register(AIC::BASE_ADDRESS, AIC::IMR);
 
@@ -47,29 +52,21 @@ where
     write_register(AIC::BASE_ADDRESS, AIC::IECR, status);
 }
 
-#[naked]
-#[no_mangle]
 /// This function wraps the exception handler for simple pass over as a function.  
 /// The handler function evaluates wether a specific handler is set before returning    
 /// the address of the handler. The exception macro wraps the handler for correct exception handling.
-extern "C" fn trampoline() {
-    fn handler() {
-        unsafe {
-            if system_timer::get_periodic_interrupts_enabled()
-                && system_timer::has_system_timer_elapsed()
-            {
-                if SYS_TIMER_INTERRUPT_HANDLER.is_some() {
-                    SYS_TIMER_INTERRUPT_HANDLER.as_mut().unwrap()();
-                }
-            }
-            if super::dbgu::is_char_available() {
-                if DBGU_INTERRUPT_HANDLER.is_some() {
-                    DBGU_INTERRUPT_HANDLER.as_mut().unwrap()();
-                }
-            }
+#[rost_macros::exception]
+unsafe fn Interrupt() {
+    if system_timer::get_periodic_interrupts_enabled() && system_timer::has_system_timer_elapsed() {
+        if SYS_TIMER_INTERRUPT_HANDLER.is_some() {
+            SYS_TIMER_INTERRUPT_HANDLER.as_mut().unwrap()();
         }
     }
-    processor::exception_routine!(handler, 4, true, true);
+    if super::dbgu::is_char_available() {
+        if DBGU_INTERRUPT_HANDLER.is_some() {
+            DBGU_INTERRUPT_HANDLER.as_mut().unwrap()();
+        }
+    }
 }
 
 macro_rules! _mark_end_of_interrupt{

@@ -28,12 +28,69 @@ mod system_timer;
 /// Sets stack pointers and calls boot function
 #[no_mangle]
 #[naked]
-pub extern "C" fn _start() -> ! {
-    memory::init_processor_mode_stacks!();
-    processor::switch_processor_mode!(processor::ProcessorMode::System);
+pub unsafe extern "C" fn _start() -> ! {
+    asm!("
+        // initialize stacks by switching to
+        // processor mode and setting stack 
+        MRS r0, cpsr
+        BIC r0, r0, #0x1F
+        ORR r0, r0, {supervisor_mode}
+        MSR cpsr_c, r0
+    
+        ldr sp, ={sp_svc_start}
 
-    boot();
-    loop {}
+        MRS r0, cpsr
+        BIC r0, r0, #0x1F
+        ORR r0, r0, {fiq_mode}
+        MSR cpsr_c, r0
+
+        ldr sp, ={sp_fiq_start}
+
+        MRS r0, cpsr
+        BIC r0, r0, #0x1F
+        ORR r0, r0, {irq_mode}
+        MSR cpsr_c, r0
+
+        ldr sp, ={sp_irq_start}
+
+        MRS r0, cpsr
+        BIC r0, r0, #0x1F
+        ORR r0, r0, {abort_mode}
+        MSR cpsr_c, r0
+
+        ldr sp, ={sp_abort_start}
+
+        MRS r0, cpsr
+        BIC r0, r0, #0x1F
+        ORR r0, r0, {undefined_mode}
+        MSR cpsr_c, r0
+
+        ldr sp, ={sp_undefined_start}
+
+        MRS r0, cpsr
+        BIC r0, r0, #0x1F
+        ORR r0, r0, {system_mode}
+        MSR cpsr_c, r0
+
+        ldr sp, ={sp_system_start}
+
+        // jump to boot
+
+        b {boot}
+    ",  supervisor_mode = const processor::ProcessorMode::Supervisor as u32,  
+        sp_svc_start = const memory::SP_SVC_START,
+        fiq_mode = const processor::ProcessorMode::FIQ as u32,
+        sp_fiq_start = const memory::SP_FIQ_START,
+        irq_mode = const processor::ProcessorMode::IRQ as u32,
+        sp_irq_start = const memory::SP_IRQ_START,
+        abort_mode = const processor::ProcessorMode::Abort as u32,
+        sp_abort_start = const memory::SP_ABT_START,
+        undefined_mode = const processor::ProcessorMode::Undefined as u32,
+        sp_undefined_start = const memory::SP_UND_START,
+        system_mode = const processor::ProcessorMode::System as u32,
+        sp_system_start = const memory::SP_USER_SYSTEM_START,
+        boot = sym boot,
+        options(noreturn));
 }
 
 static mut DBGU_BUFFER: Vec<char> = Vec::<char>::new();

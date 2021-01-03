@@ -1,0 +1,19 @@
+[package]
+authors = ["Karl Skomski <karl@skomski.com>"]
+categories = ["embedded", "no-std"]
+description = "proc macros for rOSt"
+license = "unlicense"
+name = "rost-macros"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[dependencies.syn]
+features = ["extra-traits", "full"]
+version = "1.0"
