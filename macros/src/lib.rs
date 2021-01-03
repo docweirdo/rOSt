@@ -75,34 +75,38 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
     let tramp_ident = Ident::new(&format!("{}_trampoline", f.sig.ident), Span::call_site());
     let ident = &f.sig.ident;
 
+    let use_nested_interrupt;
+    let mark_end_of_interrupt;
+    let lr_size;
+
     match exn {
         Exception::Interrupt => {
-            quote!(
-                #[naked]
-                #[no_mangle]
-                #[doc(hidden)]
-                #[export_name = #ident_s]
-                pub unsafe extern "C" fn #tramp_ident() {
-                    processor::exception_routine!(subroutine=#ident, lr_size=4, nested_interrupt=true, mark_end_of_interrupt=true);
-                }
-
-                #f
-            )
-            .into()
-        },
-        _ => {
-            quote!(
-                #[naked]
-                #[no_mangle]
-                #[doc(hidden)]
-                #[export_name = #ident_s]
-                pub unsafe extern "C" fn #tramp_ident() {
-                    processor::exception_routine!(subroutine=#ident, lr_size=4, nested_interrupt=false, mark_end_of_interrupt=false);
-                }
-
-                #f
-            )
-            .into()
+            use_nested_interrupt = true;
+            mark_end_of_interrupt = true;
+            lr_size = 4;
+        }
+        Exception::SoftwareInterrupt | Exception::UndefinedInstruction | Exception::Reset => {
+            use_nested_interrupt = false;
+            mark_end_of_interrupt = false;
+            lr_size = 0;
+        }
+        Exception::PrefetchAbort | Exception::DataAbort => {
+            use_nested_interrupt = false;
+            mark_end_of_interrupt = false;
+            lr_size = 4;
         }
     }
+
+    quote!(
+        #[naked]
+        #[no_mangle]
+        #[doc(hidden)]
+        #[export_name = #ident_s]
+        pub unsafe extern "C" fn #tramp_ident() {
+            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt, mark_end_of_interrupt=#mark_end_of_interrupt);
+        }
+
+        #f
+    )
+    .into()
 }
