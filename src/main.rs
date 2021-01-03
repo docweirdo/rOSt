@@ -15,6 +15,7 @@ use log::{debug, error, info};
 use rand::prelude::*;
 use rand_pcg::Pcg64;
 
+mod allocator;
 mod dbgu;
 mod exceptions;
 mod fmt;
@@ -113,6 +114,7 @@ pub fn boot() {
 
     // set the wanted interval for the system timer
     system_timer::init_system_timer_interrupt(32000);
+    system_timer::set_real_time_timer_interval(0x64);
     dbgu::set_dbgu_recv_interrupt(true);
     interrupt_controller::init_system_interrupt(
         || {
@@ -175,8 +177,8 @@ pub fn eval_check() -> bool {
     println!("Received: {}", char_buf);
     debug!(
         "current heap size: {:#X}, left: {:#X}",
-        memory::get_current_heap_size(),
-        memory::get_heap_size_left()
+        allocator::get_current_heap_size(),
+        allocator::get_heap_size_left()
     );
 
     match char_buf.as_str() {

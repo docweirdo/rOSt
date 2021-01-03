@@ -29,11 +29,14 @@ impl ST {
 /// Values are counted in downwards a 16-bit register, therefore minimal period is with 1,  
 /// maximum period is with value 0 because of overflow.
 pub fn init_system_timer_interrupt(value: u16) {
+    // enable system interrupt
     write_register(ST::BASE_ADDRESS, ST::IER, 0x1);
-
-    //Todo: export in own function
-    write_register(ST::BASE_ADDRESS, ST::RTMR, 0x64);
+    // set interval
     write_register(ST::BASE_ADDRESS, ST::PIMR, value as u32);
+}
+
+pub fn set_real_time_timer_interval(interval: u32) {
+    write_register(ST::BASE_ADDRESS, ST::RTMR, interval);
 }
 
 pub fn get_current_real_time() -> u32 {
