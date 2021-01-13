@@ -2,14 +2,12 @@ use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 
-const USER_THREAD_STACK_SIZE: usize = 1024 * 4;
-const KERNEL_THREAD_STACK_SIZE: usize = 1024 * 4;
+const THREAD_STACK_SIZE: usize = 1024 * 4;
 
 struct TCB {
     id: usize,
     state: ThreadState,
-    user_stack: Vec<u8>,
-    kernel_stack: Vec<u8>,
+    stack: Vec<u8>,
     entry: Box<fn()>,
 }
 
@@ -32,15 +30,14 @@ pub fn create_thread(entry: fn()) -> usize {
         let mut tcb = TCB {
             id: id,
             state: ThreadState::Stopped,
-            user_stack: vec![0; USER_THREAD_STACK_SIZE],
-            kernel_stack: vec![0; KERNEL_THREAD_STACK_SIZE],
+            stack: vec![0; THREAD_STACK_SIZE],
             entry: Box::new(entry),
         };
 
         // TODO: prepare thread for switching
-        let size = tcb.user_stack.len();
+        let size = tcb.stack.len();
         unsafe {
-            let s_ptr = tcb.user_stack.as_mut_ptr().offset(size as isize);
+            let s_ptr = tcb.stack.as_mut_ptr().offset(size as isize);
             core::ptr::write(s_ptr.offset(-8) as *mut u64, *tcb.entry as u64);
         }
 

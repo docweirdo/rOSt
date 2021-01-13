@@ -1,5 +1,5 @@
 [package]
-authors = ["Karl Skomski <karl@skomski.com>"]
+authors = ["Karl Skomski <karl@skomski.com>", "Corin Baurmann <corin.baurmann@gmail.com>"]
 categories = ["embedded", "no-std"]
 description = "proc macros for rOSt"
 license = "unlicense"
