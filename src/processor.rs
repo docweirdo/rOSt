@@ -118,11 +118,13 @@ pub(crate) use _set_interrupts_enabled as set_interrupts_enabled;
 macro_rules! _exception_routine {
     (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=true, mark_end_of_interrupt=true) => {
             asm!(
-                // save all registers
-                "push {{r0-r12, r14}}",
-                "mrs r14, SPSR",
-                "mrs r12, CPSR",
-                "push {{r14}}",
+                // save userstack pointer, spsr, adjusted lr, r0 as work register and cpsr to later return on userstack
+                "push {{r1}}",
+                "ldm r1, {{sp}}^", // TODO: nop or not?
+                "nop",
+                "sub lr, lr, #{lr_size}",
+                "stm r1, {{r1, spsr, lr, r0, cpsr}}",
+                "pop {{r1}}",
 
                 // switch to system mode
                 "MRS r0, cpsr",
@@ -130,27 +132,43 @@ macro_rules! _exception_routine {
                 "ORR r0, r0, #0x1F",
                 "MSR cpsr_c, r0",
 
+                // increment sp to actual stacksize and save rest of thread context
+                "sub sp, sp, 20",
+                "push {{r1-r14}}",
+
                 // enable interrupts
                 "MRS r0, CPSR",
                 "BIC r0, r0, #0x80",
                 "MSR    CPSR_c, r0",
 
                 // jump to subcall
-                "push {{r12, r14}}",
-                "bl {}",
-                "pop {{r12, r14}}",
-                "msr CPSR, r12", // restore exception mode and disable interrupts
+                "bl {subcall}",
+                
+                // disable interrupts
+                "MRS r0, CPSR",
+                "ORR r0, r0, #0x80",
+                "MSR    CPSR_c, r0",
+                
+                // partially restore context of thread and return to former exception mode
+                "pop {{r1-r14}}",
+                "pop {{r0}}",
+                "msr CPSR, r0", // switch to former exception mode
 
                 // mark end of interrupt
                 "ldr r0, =0xFFFFF000",
                 "str r0, [r0, #0x130]",
 
-                // restore registers
-                "pop {{r14}}",
-                "msr SPSR, r14 ",
-                "pop {{r0-r12, r14}}",
-                "subs pc, lr, #{}"
-            , sym $subcall, const $lr_size, options(noreturn));
+                // pop lr and spsr from userstack! to correctly return to user mode
+                "push {{r1}}",
+                "ldm r1, {{sp}}^", // TODO: nop or not?
+                "nop",
+                "ldm r1!, {{spsr, lr, r0}}",
+                "ldm sp!, {{sp}}^",
+                "pop {{r1}}",
+
+                // return to user mode
+                "subs pc, lr, #0"
+            , subcall = sym $subcall, lr_size = const $lr_size, options(noreturn));
     };
     (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=false, mark_end_of_interrupt=true) => {
             asm!(
