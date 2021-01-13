@@ -1,3 +1,4 @@
+use super::threads;
 use num_traits::{FromPrimitive, ToPrimitive};
 
 #[repr(u8)]
@@ -230,16 +231,19 @@ macro_rules! _exception_routine {
 
                 // jump to subcall
                 "push {{r12, r14}}",
-                "bl {}",
+                "bl {subcall}",
                 "pop {{r12, r14}}",
                 "msr CPSR, r12", // restore exception mode and disable interrupts
+
+                // call thread scheduler
+                "bl {schedule_threads}",
 
                 // restore registers
                 "pop {{r14}}",
                 "msr SPSR, r14 ",
                 "pop {{r0-r12, r14}}",
-                "subs pc, lr, #{}"
-            , sym $subcall, const $lr_size, options(noreturn));
+                "subs pc, lr, #{lr_size}"
+            , subcall = sym $subcall, schedule_threads = sym $crate::threads::schedule_threads, lr_size = const $lr_size, options(noreturn));
     };
 }
 

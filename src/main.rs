@@ -25,6 +25,7 @@ mod logger;
 mod memory;
 mod processor;
 mod system_timer;
+mod threads;
 
 /// Sets stack pointers and calls boot function
 #[no_mangle]
