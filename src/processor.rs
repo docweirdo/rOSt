@@ -118,13 +118,22 @@ pub(crate) use _set_interrupts_enabled as set_interrupts_enabled;
 macro_rules! _exception_routine {
     (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=true, mark_end_of_interrupt=true) => {
             asm!(
-                // save userstack pointer, spsr, adjusted lr, r0 as work register and cpsr to later return on userstack
-                "push {{r1}}",
-                "ldm r1, {{sp}}^", // TODO: nop or not?
+                // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
+                "push {{r1, r0}}",  // r1, r0   |
+                "mrs r0, spsr",     
+                "sub sp, sp, #4",   // r1, r0, x    |
+                "stm sp, {{sp}}^",  // r1, r0, sp_user  |
                 "nop",
+                "pop {{r1}}",       // r1, r0   |
                 "sub lr, lr, #{lr_size}",
-                "stm r1, {{r1, spsr, lr, r0, cpsr}}",
-                "pop {{r1}}",
+                "stmfd r1!, {{r0, r2-r14}}",  // r1, r0   |   spsr, r2-12, r13_irq-r14_irq
+
+                // save original r0 and cpsr on userstack
+                "pop {{r0}}",               // r1   |   spsr, r2-12, r13_irq-r14_irq
+                "stmfd r1!, {{r0}}",          // r1   |  spsr, r2-12, r13_irq-r14_irq, r0
+                "mrs r0, cpsr",
+                "stmfd r1!, {{r0}}",          // r1   |  spsr, r2-12, r13_irq-r14_irq, r0, cpsr
+                "pop {{r1}}",               //      |  spsr, r2-12, r13_irq-r14_irq, r0, cpsr
 
                 // switch to system mode
                 "MRS r0, cpsr",
@@ -132,9 +141,9 @@ macro_rules! _exception_routine {
                 "ORR r0, r0, #0x1F",
                 "MSR cpsr_c, r0",
 
-                // increment sp to actual stacksize and save rest of thread context
-                "sub sp, sp, 20",
-                "push {{r1-r14}}",
+                // increment sp to actual stacksize and save rest of thread context plus user lr
+                "sub sp, sp, #(16*4)",      
+                "push {{r1, r14}}",         // spsr, r2-12, r13_irq-r14_irq, r0, cpsr, r1, r14_user
 
                 // enable interrupts
                 "MRS r0, CPSR",
@@ -149,22 +158,35 @@ macro_rules! _exception_routine {
                 "ORR r0, r0, #0x80",
                 "MSR    CPSR_c, r0",
                 
-                // partially restore context of thread and return to former exception mode
-                "pop {{r1-r14}}",
-                "pop {{r0}}",
+                // restore user r1 and lr, switch back to former exception mode
+                "pop {{r1,r14}}",       // spsr, r2-12, r13_irq-r14_irq, r0, cpsr
+                "pop {{r0}}",           // spsr, r2-12, r13_irq-r14_irq, r0
                 "msr CPSR, r0", // switch to former exception mode
 
                 // mark end of interrupt
                 "ldr r0, =0xFFFFF000",
                 "str r0, [r0, #0x130]",
 
-                // pop lr and spsr from userstack! to correctly return to user mode
-                "push {{r1}}",
-                "ldm r1, {{sp}}^", // TODO: nop or not?
+                // get sp_user, get user/thread context back
+                "push {{r1}}",      // r1   |   spsr, r2-r14, r0
+                "sub sp, sp, #4",   // r1, x   |   spsr, r2-r14, r0
+                "stm sp, {{sp}}^", // r1, sp_user | spsr, r2-r14, r0
                 "nop",
-                "ldm r1!, {{spsr, lr, r0}}",
-                "ldm sp!, {{sp}}^",
-                "pop {{r1}}",
+                "pop {{r1}}",   // r1   | spsr, r2-r14, r0
+                "ldmfd r1!, {{r0}}",  // r1   | spsr, r2-r14
+                "push {{r0}}",  // r1, r0   | spsr, r2-r14
+                "ldmfd r1!, {{r0, r2-r14}}",  // r1, r0 
+
+                // write updated sp_user back to orig. register
+                "push {{r1}}",  // r1, r0, sp_user
+                "ldm sp, {{sp}}^",  // r1, r0, x
+                "nop",
+                "add sp, sp, #4",    // r1, r0
+
+                // write back orig. exception spsr and restore work registers
+                "msr SPSR, r0",
+                "pop {{r0}}", // r1
+                "pop {{r1}}", //
 
                 // return to user mode
                 "subs pc, lr, #0"
@@ -172,11 +194,22 @@ macro_rules! _exception_routine {
     };
     (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=false, mark_end_of_interrupt=true) => {
             asm!(
-                // save all registers
-                "push {{r0-r12, r14}}",
-                "mrs r14, SPSR",
-                "mrs r12, CPSR",
-                "push {{r14}}",
+                // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
+                "push {{r1, r0}}",  // r1, r0   |
+                "mrs r0, spsr",     
+                "sub sp, sp, #4",   // r1, r0, x    |
+                "stm sp, {{sp}}^",  // r1, r0, sp_user  |
+                "nop",
+                "pop {{r1}}",       // r1, r0   |
+                "sub lr, lr, #{lr_size}",
+                "stmfd r1!, {{r0, r2-r14}}",  // r1, r0   |   spsr, r2-12, r13_irq-r14_irq
+
+                // save original r0 and cpsr on userstack
+                "pop {{r0}}",               // r1   |   spsr, r2-12, r13_irq-r14_irq
+                "stmfd r1!, {{r0}}",          // r1   |  spsr, r2-12, r13_irq-r14_irq, r0
+                "mrs r0, cpsr",
+                "stmfd r1!, {{r0}}",          // r1   |  spsr, r2-12, r13_irq-r14_irq, r0, cpsr
+                "pop {{r1}}",               //      |  spsr, r2-12, r13_irq-r14_irq, r0, cpsr
 
                 // switch to system mode
                 "MRS r0, cpsr",
@@ -184,36 +217,75 @@ macro_rules! _exception_routine {
                 "ORR r0, r0, #0x1F",
                 "MSR cpsr_c, r0",
 
+                // increment sp to actual stacksize and save rest of thread context plus user lr
+                "sub sp, sp, #(16*4)",      
+                "push {{r1, r14}}",         // spsr, r2-12, r13_irq-r14_irq, r0, cpsr, r1, r14_user
+
                 // jump to subcall
-                "push {{r12, r14}}",
-                "bl {}",
-                "pop {{r12, r14}}",
-                "msr CPSR, r12", // restore exception mode and disable interrupts
+                "bl {subcall}",
+                
+                // restore user r1 and lr, switch back to former exception mode
+                "pop {{r1,r14}}",       // spsr, r2-12, r13_irq-r14_irq, r0, cpsr
+                "pop {{r0}}",           // spsr, r2-12, r13_irq-r14_irq, r0
+                "msr CPSR, r0", // switch to former exception mode
 
                 // mark end of interrupt
                 "ldr r0, =0xFFFFF000",
                 "str r0, [r0, #0x130]",
 
-                // restore registers
-                "pop {{r14}}",
-                "msr SPSR, r14 ",
-                "pop {{r0-r12, r14}}",
-                "subs pc, lr, #{}"
+                // get sp_user, get user/thread context back
+                "push {{r1}}",      // r1   |   spsr, r2-r14, r0
+                "sub sp, sp, #4",   // r1, x   |   spsr, r2-r14, r0
+                "stm sp, {{sp}}^", // r1, sp_user | spsr, r2-r14, r0
+                "nop",
+                "pop {{r1}}",   // r1   | spsr, r2-r14, r0
+                "ldmfd r1!, {{r0}}",  // r1   | spsr, r2-r14
+                "push {{r0}}",  // r1, r0   | spsr, r2-r14
+                "ldmfd r1!, {{r0, r2-r14}}",  // r1, r0 
+
+                // write updated sp_user back to orig. register
+                "push {{r1}}",  // r1, r0, sp_user
+                "ldm sp, {{sp}}^",  // r1, r0, x
+                "nop",
+                "add sp, sp, #4",    // r1, r0
+
+                // write back orig. exception spsr and restore work registers
+                "msr SPSR, r0",
+                "pop {{r0}}", // r1
+                "pop {{r1}}", //
+
+                // return to user mode
+                "subs pc, lr, #0"
             , sym $subcall, const $lr_size, options(noreturn));
     };
     (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=true, mark_end_of_interrupt=false) => {
             asm!(
-                // save all registers
-                "push {{r0-r12, r14}}",
-                "mrs r14, SPSR",
-                "mrs r12, CPSR",
-                "push {{r14}}",
+                // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
+                "push {{r1, r0}}",  // r1, r0   |
+                "mrs r0, spsr",     
+                "sub sp, sp, #4",   // r1, r0, x    |
+                "stm sp, {{sp}}^",  // r1, r0, sp_user  |
+                "nop",
+                "pop {{r1}}",       // r1, r0   |
+                "sub lr, lr, #{lr_size}",
+                "stmfd r1!, {{r0, r2-r14}}",  // r1, r0   |   spsr, r2-12, r13_irq-r14_irq
+
+                // save original r0 and cpsr on userstack
+                "pop {{r0}}",               // r1   |   spsr, r2-12, r13_irq-r14_irq
+                "stmfd r1!, {{r0}}",          // r1   |  spsr, r2-12, r13_irq-r14_irq, r0
+                "mrs r0, cpsr",
+                "stmfd r1!, {{r0}}",          // r1   |  spsr, r2-12, r13_irq-r14_irq, r0, cpsr
+                "pop {{r1}}",               //      |  spsr, r2-12, r13_irq-r14_irq, r0, cpsr
 
                 // switch to system mode
                 "MRS r0, cpsr",
                 "BIC r0, r0, #0x1F",
                 "ORR r0, r0, #0x1F",
                 "MSR cpsr_c, r0",
+
+                // increment sp to actual stacksize and save rest of thread context plus user lr
+                "sub sp, sp, #(16*4)",      
+                "push {{r1, r14}}",         // spsr, r2-12, r13_irq-r14_irq, r0, cpsr, r1, r14_user
 
                 // enable interrupts
                 "MRS r0, CPSR",
@@ -221,25 +293,61 @@ macro_rules! _exception_routine {
                 "MSR    CPSR_c, r0",
 
                 // jump to subcall
-                "push {{r12, r14}}",
-                "bl {}",
-                "pop {{r12, r14}}",
-                "msr CPSR, r12", // restore exception mode and disable interrupts
+                "bl {subcall}",
+                
+                // disable interrupts
+                "MRS r0, CPSR",
+                "ORR r0, r0, #0x80",
+                "MSR    CPSR_c, r0",
+                
+                // restore user r1 and lr, switch back to former exception mode
+                "pop {{r1,r14}}",       // spsr, r2-12, r13_irq-r14_irq, r0, cpsr
+                "pop {{r0}}",           // spsr, r2-12, r13_irq-r14_irq, r0
+                "msr CPSR, r0", // switch to former exception mode
 
-                // restore registers
-                "pop {{r14}}",
-                "msr SPSR, r14 ",
-                "pop {{r0-r12, r14}}",
-                "subs pc, lr, #{}"
+                // get sp_user, get user/thread context back
+                "push {{r1}}",      // r1   |   spsr, r2-r14, r0
+                "sub sp, sp, #4",   // r1, x   |   spsr, r2-r14, r0
+                "stm sp, {{sp}}^", // r1, sp_user | spsr, r2-r14, r0
+                "nop",
+                "pop {{r1}}",   // r1   | spsr, r2-r14, r0
+                "ldmfd r1!, {{r0}}",  // r1   | spsr, r2-r14
+                "push {{r0}}",  // r1, r0   | spsr, r2-r14
+                "ldmfd r1!, {{r0, r2-r14}}",  // r1, r0 
+
+                // write updated sp_user back to orig. register
+                "push {{r1}}",  // r1, r0, sp_user
+                "ldm sp, {{sp}}^",  // r1, r0, x
+                "nop",
+                "add sp, sp, #4",    // r1, r0
+
+                // write back orig. exception spsr and restore work registers
+                "msr SPSR, r0",
+                "pop {{r0}}", // r1
+                "pop {{r1}}", //
+
+                // return to user mode
+                "subs pc, lr, #0"
             , sym $subcall, const $lr_size, options(noreturn));
     };
     (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=false, mark_end_of_interrupt=false) => {
             asm!(
-                // save all registers
-                "push {{r0-r12, r14}}",
-                "mrs r14, SPSR",
-                "mrs r12, CPSR",
-                "push {{r14}}",
+                // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
+                "push {{r1, r0}}",  // r1, r0   |
+                "mrs r0, spsr",     
+                "sub sp, sp, #4",   // r1, r0, x    |
+                "stm sp, {{sp}}^",  // r1, r0, sp_user  |
+                "nop",
+                "pop {{r1}}",       // r1, r0   |
+                "sub lr, lr, #{lr_size}",
+                "stmfd r1!, {{r0, r2-r14}}",  // r1, r0   |   spsr, r2-12, r13_irq-r14_irq
+
+                // save original r0 and cpsr on userstack
+                "pop {{r0}}",               // r1   |   spsr, r2-12, r13_irq-r14_irq
+                "stmfd r1!, {{r0}}",          // r1   |  spsr, r2-12, r13_irq-r14_irq, r0
+                "mrs r0, cpsr",
+                "stmfd r1!, {{r0}}",          // r1   |  spsr, r2-12, r13_irq-r14_irq, r0, cpsr
+                "pop {{r1}}",               //      |  spsr, r2-12, r13_irq-r14_irq, r0, cpsr
 
                 // switch to system mode
                 "MRS r0, cpsr",
@@ -247,21 +355,43 @@ macro_rules! _exception_routine {
                 "ORR r0, r0, #0x1F",
                 "MSR cpsr_c, r0",
 
+                // increment sp to actual stacksize and save rest of thread context plus user lr
+                "sub sp, sp, #(16*4)",      
+                "push {{r1, r14}}",         // spsr, r2-12, r13_irq-r14_irq, r0, cpsr, r1, r14_user
+
                 // jump to subcall
-                "push {{r12, r14}}",
                 "bl {subcall}",
-                "pop {{r12, r14}}",
-                "msr CPSR, r12", // restore exception mode and disable interrupts
+                
+                // restore user r1 and lr, switch back to former exception mode
+                "pop {{r1,r14}}",       // spsr, r2-12, r13_irq-r14_irq, r0, cpsr
+                "pop {{r0}}",           // spsr, r2-12, r13_irq-r14_irq, r0
+                "msr CPSR, r0", // switch to former exception mode
 
-                // call thread scheduler
-                "bl {schedule_threads}",
+                // get sp_user, get user/thread context back
+                "push {{r1}}",      // r1   |   spsr, r2-r14, r0
+                "sub sp, sp, #4",   // r1, x   |   spsr, r2-r14, r0
+                "stm sp, {{sp}}^", // r1, sp_user | spsr, r2-r14, r0
+                "nop",
+                "pop {{r1}}",   // r1   | spsr, r2-r14, r0
+                "ldmfd r1!, {{r0}}",  // r1   | spsr, r2-r14
+                "push {{r0}}",  // r1, r0   | spsr, r2-r14
+                "ldmfd r1!, {{r0, r2-r14}}",  // r1, r0 
 
-                // restore registers
-                "pop {{r14}}",
-                "msr SPSR, r14 ",
-                "pop {{r0-r12, r14}}",
-                "subs pc, lr, #{lr_size}"
-            , subcall = sym $subcall, schedule_threads = sym $crate::threads::schedule_threads, lr_size = const $lr_size, options(noreturn));
+                // write updated sp_user back to orig. register
+                "push {{r1}}",  // r1, r0, sp_user
+                "ldm sp, {{sp}}^",  // r1, r0, x
+                "nop",
+                "add sp, sp, #4",    // r1, r0
+
+                // write back orig. exception spsr and restore work registers
+                "msr SPSR, r0",
+                "pop {{r0}}", // r1
+                "pop {{r1}}", //
+
+                // return to user mode
+                "subs pc, lr, #0"
+            , subcall = sym $subcall, //schedule_threads = sym $crate::threads::schedule_threads, 
+            lr_size = const $lr_size, options(noreturn));
     };
 }
 
