@@ -143,6 +143,7 @@ pub fn exit_thread() {
 }
 
 /// System call to yield the current thread via software interrupt.
+#[allow(dead_code)]
 pub fn yield_thread() {
     unsafe {
         asm!("swi #32");

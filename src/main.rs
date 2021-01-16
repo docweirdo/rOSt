@@ -101,6 +101,10 @@ static mut RNG: Option<Pcg64> = None;
 static mut TASK3_ACTIVE: bool = false;
 static mut TASK4_ACTIVE: bool = false;
 
+/// The amount of SysTicks before the scheduler gets called.
+static SCHEDULER_INTERVAL: u32 = 5;    
+static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
+
 /// Initializes the operating system.
 ///
 /// TODO: Add detailed description
@@ -119,7 +123,7 @@ pub fn boot() {
     // Initialize needed interrupts
 
     // set the wanted interval for the system timer
-    system_timer::init_system_timer_interrupt(32000);
+    system_timer::init_system_timer_interrupt(6000);
     system_timer::set_real_time_timer_interval(0x64);
     dbgu::set_dbgu_recv_interrupt(true);
     interrupt_controller::init_system_interrupt(
@@ -132,8 +136,19 @@ pub fn boot() {
             if unsafe { TASK4_ACTIVE } {
                 print!("!");
             }
+            
             interrupt_controller::mark_end_of_interrupt!();
-            threads::schedule();
+
+            unsafe{
+                SCHEDULER_INTERVAL_COUNTER = if SCHEDULER_INTERVAL_COUNTER == 0 {
+                    threads::schedule();
+                    SCHEDULER_INTERVAL
+                } else {
+                    SCHEDULER_INTERVAL_COUNTER - 1
+                }
+            }
+           
+            
         },
         move || unsafe {
             // dbgu_interrupt_handler,fires when rxready is set
