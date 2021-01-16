@@ -108,7 +108,7 @@ pub fn boot() {
         env!("CARGO_PKG_VERSION")
     );
 
-    logger::init_logger();
+    logger::init_logger(log::LevelFilter::Trace);
     debug!("processor mode {:?}", processor::get_processor_mode());
 
     // Initialize needed interrupts
@@ -122,9 +122,11 @@ pub fn boot() {
             // sys_timer_interrrupt_handler
             // print ! if task3 app is active
             if unsafe { PRINT_SYSTEM_TIMER_TASK3 } {
-                unsafe { threads::schedule(); }
                 println!("!");
             }
+            interrupt_controller::mark_end_of_interrupt!();
+            processor::set_interrupts_enabled!(false);
+            threads::schedule();
         },
         move || unsafe {
             // dbgu_interrupt_handler,fires when rxready is set
@@ -132,43 +134,39 @@ pub fn boot() {
             DBGU_BUFFER.push(
                 dbgu::read_char().expect("there should be char availabe in interrupt") as u8
                     as char,
-            )
+            );
+            interrupt_controller::mark_end_of_interrupt!();
         },
     );
-    // Switch to user code
 
     processor::set_interrupts_enabled!(true);
+
+    // Switch to user code
     processor::switch_processor_mode!(processor::ProcessorMode::User);
 
     fn eval_thread() {
-      debug!("processor mode {:?}", processor::get_processor_mode());
+        debug!("processor mode {:?}", processor::get_processor_mode());
 
-      fn simple_thread_1() {
-        println!("thread: simple_1 running");
-        threads::yield_thread();
-      }
+        for id in 1..5 {
+            let simple_thread = move || {
+                debug!("processor mode {:?}", processor::get_processor_mode());
+                println!("thread: simple_thread {}", id);
+            };
+            threads::create_thread(simple_thread);
+        }
 
-      let id = threads::create_thread(simple_thread_1);
-      println!("create thread {}", id);
-
-      loop {
-        println!("thread: eval running");
-         if eval_check() {
-             break;
-         }
-         threads::yield_thread();
-      }
+        loop {
+            println!("thread: eval running");
+            if eval_check() {
+                break;
+            }
+        }
     }
-
-    //let id = threads::create_thread(eval_thread);
-    //println!("create thread {}", id);
 
     println!("start threading");
 
+    // noreturn
     threads::init(eval_thread);
-
-    //println!("the end");
-    panic!();
 }
 
 const KEY_ENTER: char = 0xD as char;
