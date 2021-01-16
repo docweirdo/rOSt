@@ -1,5 +1,5 @@
 [package]
-authors = ["Karl Skomski <karl@skomski.com>"]
+authors = ["Karl Skomski <karl@skomski.com>", "Corin Baurmann <corin.baurmann@gmail.com>"]
 edition = "2018"
 readme = "README.md"
 name = "rost"
