@@ -120,7 +120,7 @@ macro_rules! _exception_routine {
             asm!(
                 // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
                 "push {{r0, r1}}",  // r1, r0   |
-                "mrs r0, spsr",     
+                "mrs r0, spsr",
                 "sub sp, sp, #4",   // r1, r0, x    |
                 "stm sp, {{sp}}^",  // r1, r0, sp_user  |
                 "nop",
@@ -142,7 +142,7 @@ macro_rules! _exception_routine {
                 "MSR cpsr_c, r0",
 
                 // increment sp to actual stacksize and save rest of thread context plus user lr
-                "sub sp, sp, #(15*4)",      
+                "sub sp, sp, #(15*4)",
                 "push {{r1, r14}}",         // spsr, r2-12, r14_irq, r0, cpsr, r14_user, r0
 
                 // enable interrupts
@@ -152,7 +152,7 @@ macro_rules! _exception_routine {
 
                 // jump to subcall
                 "bl {subcall}",
-                
+
                 // disable interrupts
                 "MRS r0, CPSR",
                 "ORR r0, r0, #0x80",
@@ -163,10 +163,6 @@ macro_rules! _exception_routine {
                 "pop {{r0}}",           // spsr, r2-12, r14_irq, r0
                 "msr CPSR, r0", // switch to former exception mode
 
-                // mark end of interrupt
-                "ldr r0, =0xFFFFF000",
-                "str r0, [r0, #0x130]",
-
                 // get sp_user, get user/thread context back
                 "push {{r1}}",      // r1   |   spsr, r2-r14, r0
                 "sub sp, sp, #4",   // r1, x   |   spsr, r2-r14, r0
@@ -175,7 +171,7 @@ macro_rules! _exception_routine {
                 "pop {{r1}}",   // r1   | spsr, r2-r14, r0
                 "ldmfd r1!, {{r0}}",  // r1   | spsr, r2-r14
                 "push {{r0}}",  // r1, r0   | spsr, r2-r14
-                "ldmfd r1!, {{r0, r2-r12,r14}}",  // r1, r0 
+                "ldmfd r1!, {{r0, r2-r12,r14}}",  // r1, r0
 
                 // write updated sp_user back to orig. register
                 "push {{r1}}",  // r1, r0, sp_user
@@ -196,7 +192,7 @@ macro_rules! _exception_routine {
             asm!(
                 // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
                 "push {{r0, r1}}",  // r1, r0   |
-                "mrs r0, spsr",     
+                "mrs r0, spsr",
                 "sub sp, sp, #4",   // r1, r0, x    |
                 "stm sp, {{sp}}^",  // r1, r0, sp_user  |
                 "nop",
@@ -221,7 +217,7 @@ macro_rules! _exception_routine {
                 "MSR cpsr_c, r0",
 
                 // increment sp to actual stacksize and save rest of thread context plus user lr
-                "sub sp, sp, #(15*4)",      
+                "sub sp, sp, #(15*4)",
                 "push {{r1, r14}}",         // spsr, r2-12, r14_irq, r0, cpsr, r1, r14_user
 
                 // jump to subcall
@@ -240,7 +236,7 @@ macro_rules! _exception_routine {
                 "pop {{r1}}",   // r1   | spsr, r2-r14, r0
                 "ldmfd r1!, {{r0}}",  // r1   | spsr, r2-r14
                 "push {{r0}}",  // r1, r0   | spsr, r2-r14
-                "ldmfd r1!, {{r0, r2-r12,r14}}",  // r1, r0 
+                "ldmfd r1!, {{r0, r2-r12,r14}}",  // r1, r0
 
                 // write updated sp_user back to orig. register
                 "push {{r1}}",  // r1, r0, sp_user

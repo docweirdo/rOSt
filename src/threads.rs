@@ -1,23 +1,24 @@
+use super::processor;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
-use super::processor;
+use log::debug;
+use log::trace;
 
-const THREAD_STACK_SIZE: usize = 1024 * 4;
+const THREAD_STACK_SIZE: usize = 1024 * 8;
 
 #[repr(C, align(4))]
 struct TCB {
-    stack: Vec<u8>,
-    stack_pos: u32,
     id: usize,
     state: ThreadState,
-    entry: Box<fn()>,
+    entry: Box<dyn FnMut()>,
+    stack_pos: u32,
+    stack: Vec<u8>,
 }
 
 static mut THREADS: Vec<TCB> = Vec::<TCB>::new();
 static mut RUNNING_THREAD_ID: usize = 0;
 static mut LAST_THREAD_ID: usize = 0;
-static mut RESCHEDULE: bool = false;
 
 #[derive(PartialEq, Eq, Debug)]
 enum ThreadState {
@@ -29,8 +30,8 @@ enum ThreadState {
 
 use core::mem;
 
-#[repr(C, align(4))]
-struct AlignToFour([u8; 4]);
+#[repr(C, align(8))]
+struct AlignToFour([u8; 8]);
 
 unsafe fn aligned_vec(n_bytes: usize) -> Vec<u8> {
     // Lazy math to ensure we always have enough.
@@ -51,27 +52,40 @@ unsafe fn aligned_vec(n_bytes: usize) -> Vec<u8> {
     )
 }
 
-pub fn init(entry: fn()) -> ! {
+pub fn init<F>(entry: F) -> !
+where
+    F: FnMut() + 'static,
+{
     let id = create_thread(entry);
-    unsafe { 
+    unsafe {
         RUNNING_THREAD_ID = id;
         THREADS[id].state = ThreadState::Running;
-        THREADS[id].stack_pos = 0;
+        THREADS[id].stack_pos = THREADS[id]
+            .stack
+            .as_mut_ptr()
+            .offset(THREADS[id].stack.capacity() as isize) as u32;
         for v in &mut THREADS[id].stack {
             *v = 0;
         }
+
         asm!("mov sp, {stack_address}
-              mov lr, {yield_address}
               mov pc, {start_address}",
-              stack_address = in(reg) &THREADS[id].stack,
-              yield_address = in(reg) yield_thread as u32,
-              start_address = in(reg) entry as u32, options(noreturn));
+              stack_address = in(reg) THREADS[id].stack_pos,
+              start_address = in(reg) new_thread_entry as u32, options(noreturn));
     }
 }
 
-// kompletten context sichern & stack switch => fn (thread_function) ==> yield 
-// kompletten context sichern & switch_to to stack - #64 (edit lr)
-pub fn create_thread(entry: fn()) -> usize {
+unsafe extern "C" fn new_thread_entry() {
+    processor::switch_processor_mode!(processor::ProcessorMode::User);
+
+    (THREADS[RUNNING_THREAD_ID].entry)();
+    yield_thread();
+}
+
+pub fn create_thread<F>(entry: F) -> usize
+where
+    F: FnMut() + 'static,
+{
     unsafe {
         let id = LAST_THREAD_ID;
         LAST_THREAD_ID += 1;
@@ -83,45 +97,29 @@ pub fn create_thread(entry: fn()) -> usize {
             entry: Box::new(entry),
         };
 
-        let size = tcb.stack.len();
-        tcb.stack_pos = tcb.stack.as_mut_ptr().offset(size as isize) as u32 - (31*4);
-        unsafe {
-            let s_ptr : *mut u8 = tcb.stack.as_mut_ptr().offset(size as isize);
+        let capacity = tcb.stack.capacity();
+        let s_ptr: *mut u8 = tcb.stack.as_mut_ptr().offset(capacity as isize);
+        tcb.stack_pos = s_ptr.offset(15 * -4) as u32;
 
-             // r14_irq, r2-r12, spsr, __ , cpsr, __ , lr_user, __
+        core::ptr::write_volatile(
+            (tcb.stack_pos) as *mut u32,
+            processor::ProcessorMode::User as u32,
+        );
+        core::ptr::write_volatile((tcb.stack_pos + 4) as *mut u32, new_thread_entry as u32);
 
-            core::ptr::write(s_ptr.offset(1*-4) as *mut u32, *tcb.entry as u32); // lr_irq
-            // for i in 2..13 {
-            //     core::ptr::write(s_ptr.offset(i*-4) as *mut u32, *tcb.entry as u32); // r2-r12              
-            // }
-            core::ptr::write(s_ptr.offset(14*-4) as *mut u32, processor::ProcessorMode::User as u32); // spsr               
-            //core::ptr::write(s_ptr.offset(15*-4) as *mut u32, processor::ProcessorMode::User as u32); // r0
-            core::ptr::write(s_ptr.offset(16*-4) as *mut u32, processor::ProcessorMode::IRQ as u32); // cpsr
-            //core::ptr::write(s_ptr.offset(16*-4) as *mut u32, yield_thread as u32); // user_lr
-            core::ptr::write(s_ptr.offset(18*-4) as *mut u32, yield_thread as u32); // user_lr
-
-        }
         THREADS.push(tcb);
         return id;
     }
 }
 
-pub fn reschedule() {
+pub fn yield_thread() {
     unsafe {
-        RESCHEDULE = true;
+        asm!("swi #32");
     }
 }
 
-pub fn yield_thread() {
-    unsafe { asm!("swi #32"); }
-}
-
-use log::debug;
-
-#[no_mangle]
-pub unsafe extern fn schedule() {
-        RESCHEDULE = false;
-
+pub fn schedule() {
+    unsafe {
         let mut pos = RUNNING_THREAD_ID;
         while THREADS[pos].state != ThreadState::Ready {
             pos += 1;
@@ -133,33 +131,49 @@ pub unsafe extern fn schedule() {
             }
         }
 
-        //debug!("switch thread to {}", pos);
-
         THREADS[pos].state = ThreadState::Running;
         let old_pos = RUNNING_THREAD_ID;
         THREADS[old_pos].state = ThreadState::Ready;
         RUNNING_THREAD_ID = pos;
 
-    
-        asm!("mov r0, {old}
-              mov r1, {new}",
-              old = in(reg) THREADS[old_pos].stack_pos,
-              new = in(reg) THREADS[pos].stack_pos);
+        for thread in &THREADS {
+            trace!("thread: {} {:?}", thread.id, thread.state);
+        }
 
-              asm!("
-              push {{r0-r12}}
-              stm r0, {{sp}}
-              mov sp, r1
-              pop {{r0-r12}}
-              mov pc, lr", sym schedule_internal);
+        trace!(
+            "switch thread from {} sp:{:#X} to {} sp:{:#X}",
+            old_pos,
+            THREADS[old_pos].stack_pos,
+            pos,
+            THREADS[pos].stack_pos
+        );
+
+        asm!("mov r0, {old}
+          mov r1, {new}",
+          old = in(reg) &THREADS[old_pos].stack_pos,
+          new = in(reg) &THREADS[pos].stack_pos);
+
+        switch_thread();
+    }
 }
 
 #[naked]
-#[no_mangle]
-unsafe extern fn switch_thread() {
-    asm!("push {{r0-r12}}
-          stm r0, {{sp}}
-          mov sp, r1
-          pop {{r0-r12}}
-          mov pc, lr", options(noreturn));
+unsafe extern "C" fn switch_thread() {
+    asm!(
+        "push {{r0-r12}}
+         push {{r14}}
+         mrs r2, CPSR
+         push {{r2}}
+
+         stm r0, {{sp}}
+         ldm r1, {{sp}}
+
+         pop {{r2}}
+         msr CPSR, r2
+         pop {{r14}}
+         pop {{r0-r12}}
+         
+         mov pc, lr",
+        options(noreturn)
+    );
 }

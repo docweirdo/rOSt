@@ -10,7 +10,7 @@ pub struct AIC;
 #[allow(dead_code)]
 impl AIC {
     /// Advanced Interrupt Controller base address
-    const BASE_ADDRESS: u32 = 0xFFFFF000;
+    pub const BASE_ADDRESS: u32 = 0xFFFFF000;
 
     /// AIC Source Vector register 1 aka. system interrupt offset
     const SVR1: u32 = 0x84;
@@ -22,7 +22,7 @@ impl AIC {
     const IECR: u32 = 0x120;
 
     /// End of Interrupt Command Register
-    const EOICR: u32 = 0x130;
+    pub const EOICR: u32 = 0x130;
 }
 
 static mut SYS_TIMER_INTERRUPT_HANDLER: Option<alloc::boxed::Box<dyn FnMut()>> = None;
@@ -70,13 +70,13 @@ unsafe fn Interrupt() {
     }
 }
 
-// macro_rules! _mark_end_of_interrupt{
-//     () => {
-//         unsafe { asm!("
-//             ldr r0, ={}
-//             str r0, [r0, #{}]
-//         ", const $crate::interrupt_controller::AIC::BASE_ADDRESS, const $crate::interrupt_controller::AIC::EOICR) };
-//     }
-// }
+macro_rules! _mark_end_of_interrupt{
+    () => {
+        unsafe { asm!("
+            ldr r0, ={}
+            str r0, [r0, #{}]
+        ", const $crate::interrupt_controller::AIC::BASE_ADDRESS, const $crate::interrupt_controller::AIC::EOICR) };
+    }
+}
 
-// pub(crate) use _mark_end_of_interrupt as mark_end_of_interrupt;
+pub(crate) use _mark_end_of_interrupt as mark_end_of_interrupt;
