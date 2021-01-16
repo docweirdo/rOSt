@@ -122,6 +122,7 @@ pub fn boot() {
             // sys_timer_interrrupt_handler
             // print ! if task3 app is active
             if unsafe { PRINT_SYSTEM_TIMER_TASK3 } {
+                unsafe { threads::schedule(); }
                 println!("!");
             }
         },
@@ -134,18 +135,39 @@ pub fn boot() {
             )
         },
     );
-    processor::set_interrupts_enabled!(true);
-
     // Switch to user code
-    // still missing user process mode switch
 
-    loop {
-        if eval_check() {
-            break;
-        }
+    processor::set_interrupts_enabled!(true);
+    processor::switch_processor_mode!(processor::ProcessorMode::User);
+
+    fn eval_thread() {
+      debug!("processor mode {:?}", processor::get_processor_mode());
+
+      fn simple_thread_1() {
+        println!("thread: simple_1 running");
+        threads::yield_thread();
+      }
+
+      let id = threads::create_thread(simple_thread_1);
+      println!("create thread {}", id);
+
+      loop {
+        println!("thread: eval running");
+         if eval_check() {
+             break;
+         }
+         threads::yield_thread();
+      }
     }
 
-    println!("the end");
+    //let id = threads::create_thread(eval_thread);
+    //println!("create thread {}", id);
+
+    println!("start threading");
+
+    threads::init(eval_thread);
+
+    //println!("the end");
     panic!();
 }
 
@@ -184,7 +206,7 @@ pub fn eval_check() -> bool {
 
     match char_buf.as_str() {
         "swi" => unsafe {
-            asm!("swi #0");
+            asm!("swi #99");
         },
         "undi" => unsafe {
             asm!(".word 0xf7f0a000");
