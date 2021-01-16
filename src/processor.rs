@@ -46,6 +46,17 @@ macro_rules! _switch_processor_mode {
 
 pub(crate) use _switch_processor_mode as switch_processor_mode;
 
+
+pub fn interrupts_enabled() -> bool {
+    let mut cpsr: u32;
+
+    unsafe {
+        asm!("MRS {0}, CPSR", out(reg) cpsr);
+    }
+
+    (cpsr & 0x80) == 0
+}
+
 /// Either sets or unsets the interrupt mask bit in the processor status word.
 /// Requires the caller to be in priviliged mode.
 /// Clobbers r0.

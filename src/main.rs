@@ -109,6 +109,8 @@ static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
 ///
 /// TODO: Add detailed description
 pub fn boot() {
+    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    debug_assert!(!processor::interrupts_enabled());
     memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
 
     println!(
@@ -118,7 +120,6 @@ pub fn boot() {
     );
 
     logger::init_logger(log::LevelFilter::Info);
-    debug!("processor mode {:?}", processor::get_processor_mode());
 
     // Initialize needed interrupts
 
@@ -128,6 +129,8 @@ pub fn boot() {
     dbgu::set_dbgu_recv_interrupt(true);
     interrupt_controller::init_system_interrupt(
         || {
+            debug_assert!(processor::interrupts_enabled());
+
             // sys_timer_interrrupt_handler
             // print ! if task3 app is active
             if unsafe { TASK3_ACTIVE } {
@@ -151,10 +154,13 @@ pub fn boot() {
             
         },
         move || unsafe {
+            debug_assert!(processor::interrupts_enabled());
+
             // dbgu_interrupt_handler,fires when rxready is set
             // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator
             let last_char =
                 dbgu::read_char().expect("there should be char availabe in interrupt") as u8;
+
             DBGU_BUFFER.push(last_char as char);
             if TASK4_ACTIVE && last_char != 'q' as u8{
                 threads::create_thread(move || {
@@ -175,17 +181,15 @@ pub fn boot() {
     }
 
     fn eval_thread() {
-        debug!("processor mode {:?}", processor::get_processor_mode());
+        debug_assert!(processor::ProcessorMode::User == processor::get_processor_mode());
+        debug_assert!(processor::interrupts_enabled());
 
         loop {
-            println!("thread: eval running");
             if eval_check() {
                 break;
             }
         }
     }
-
-    println!("start threading");
 
     // noreturn
     threads::init(eval_thread);
@@ -320,9 +324,7 @@ pub fn eval_check() -> bool {
 
 /// Rust panic handler
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    // TODO: print with stack or heap? why does it crash sometimes?
-    print_with_stack!("panic handler");
-    print_with_stack!("{}", _info);
+fn panic(info: &PanicInfo) -> ! {
+    println_with_stack!(256, "panic handler\n{:?}", info);
     loop {}
 }
