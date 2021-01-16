@@ -141,7 +141,7 @@ pub fn boot() {
             let last_char =
                 dbgu::read_char().expect("there should be char availabe in interrupt") as u8;
             DBGU_BUFFER.push(last_char as char);
-            if TASK4_ACTIVE {
+            if TASK4_ACTIVE && last_char != 'q' as u8{
                 threads::create_thread(move || {
                     task4_print(last_char as char);
                 });
