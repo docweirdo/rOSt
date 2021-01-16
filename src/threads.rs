@@ -33,6 +33,7 @@ use core::mem;
 #[repr(C, align(8))]
 struct AlignToFour([u8; 8]);
 
+/// Creates a vector which is aligned to four bytes in memory.
 unsafe fn aligned_vec(n_bytes: usize) -> Vec<u8> {
     // Lazy math to ensure we always have enough.
     let n_units = (n_bytes / mem::size_of::<AlignToFour>()) + 1;
@@ -52,10 +53,17 @@ unsafe fn aligned_vec(n_bytes: usize) -> Vec<u8> {
     )
 }
 
+/// Initializes the first thread to run on the processor after boot.
 pub fn init<F>(entry: F) -> !
 where
     F: FnMut() + 'static,
 {
+    fn idle_thread() {
+        crate::println!("idle thread");
+        loop {}
+    }
+    create_thread(idle_thread);
+
     let id = create_thread(entry);
     unsafe {
         RUNNING_THREAD_ID = id;
@@ -75,13 +83,28 @@ where
     }
 }
 
+/// Prepares newly created threads for lifes challenges.   
+///
+/// Gets executed when the thread is scheduled for the first time  
+/// and `switch_thread()` returns to this function. Enables interrupts  
+/// and switches the processor to `ProcessorMode::User`. Then calls the  
+/// users closure and provides an `exit_thread()` guard beneath.  
 unsafe extern "C" fn new_thread_entry() {
+    processor::set_interrupts_enabled!(true);
     processor::switch_processor_mode!(processor::ProcessorMode::User);
 
     (THREADS[RUNNING_THREAD_ID].entry)();
-    yield_thread();
+    exit_thread();
 }
 
+/// Creates TCB and Stack for a new thread.
+///
+/// Takes the entry function provided by the user and creates  
+/// a TCB and stack for the new thread. Builds up a fake stack
+/// to be popped when the thread is first switched to by `switch_thread()`.  
+/// This fake stack contains a Processor Status in System Mode and
+/// the address which gets popped into the Link Register pointing
+/// to `new_thread_entry()`.
 pub fn create_thread<F>(entry: F) -> usize
 where
     F: FnMut() + 'static,
@@ -103,7 +126,7 @@ where
 
         core::ptr::write_volatile(
             (tcb.stack_pos) as *mut u32,
-            processor::ProcessorMode::User as u32,
+            processor::ProcessorMode::System as u32,
         );
         core::ptr::write_volatile((tcb.stack_pos + 4) as *mut u32, new_thread_entry as u32);
 
@@ -112,29 +135,71 @@ where
     }
 }
 
+/// System call to stop and exit the current thread via software interrupt.
+pub fn exit_thread() {
+    unsafe {
+        asm!("swi #31");
+    }
+}
+
+/// System call to yield the current thread via software interrupt.
 pub fn yield_thread() {
     unsafe {
         asm!("swi #32");
     }
 }
 
+/// Function called by the Kernel to set the running thread to `ThreadState::Stopped`.
+pub fn exit() {
+    unsafe {
+        THREADS
+            .iter_mut()
+            .find(|t| t.id == RUNNING_THREAD_ID)
+            .unwrap()
+            .state = ThreadState::Stopped;
+        // TODO: remove old threads
+        // THREADS.retain(|t| t.state != ThreadState::Stopped || t.id == RUNNING_THREAD_ID);
+    }
+    schedule();
+}
+
+/// Schedules and switches to a new thread to run on the processor.    
+///
+/// This function needs to be called in a privileged mode and cycles  
+/// through threads until it finds the next one that is ready. It then  
+/// calls `switch_thread` to switch to the selected thread.  
+/// TCBs and Stacks of threads with `ThreadState::Stopped` are removed.
 pub fn schedule() {
     unsafe {
-        let mut pos = RUNNING_THREAD_ID;
-        while THREADS[pos].state != ThreadState::Ready {
-            pos += 1;
-            if pos == THREADS.len() {
-                pos = 0;
+        processor::set_interrupts_enabled!(false);
+        let running_thread_pos = THREADS
+            .iter()
+            .position(|t| t.id == RUNNING_THREAD_ID)
+            .unwrap();
+        let mut running_thread = &mut THREADS[running_thread_pos];
+
+        let mut next_thread_pos = running_thread_pos;
+        while THREADS[next_thread_pos].state != ThreadState::Ready {
+            next_thread_pos += 1;
+            if next_thread_pos == THREADS.len() {
+                next_thread_pos = 1;
             }
-            if pos == RUNNING_THREAD_ID {
-                return;
+            if next_thread_pos == running_thread_pos {
+                if running_thread.state == ThreadState::Stopped {
+                    next_thread_pos = 0;
+                    break;
+                } else {
+                    return;
+                }
             }
         }
+        let mut next_thread = &mut THREADS[next_thread_pos];
 
-        THREADS[pos].state = ThreadState::Running;
-        let old_pos = RUNNING_THREAD_ID;
-        THREADS[old_pos].state = ThreadState::Ready;
-        RUNNING_THREAD_ID = pos;
+        next_thread.state = ThreadState::Running;
+        if running_thread.state == ThreadState::Running {
+            running_thread.state = ThreadState::Ready;
+        }
+        RUNNING_THREAD_ID = next_thread.id;
 
         for thread in &THREADS {
             trace!("thread: {} {:?}", thread.id, thread.state);
@@ -142,21 +207,30 @@ pub fn schedule() {
 
         trace!(
             "switch thread from {} sp:{:#X} to {} sp:{:#X}",
-            old_pos,
-            THREADS[old_pos].stack_pos,
-            pos,
-            THREADS[pos].stack_pos
+            running_thread.id,
+            running_thread.stack_pos,
+            next_thread.id,
+            next_thread.stack_pos
         );
+
+        crate::print!("\n");
 
         asm!("mov r0, {old}
           mov r1, {new}",
-          old = in(reg) &THREADS[old_pos].stack_pos,
-          new = in(reg) &THREADS[pos].stack_pos);
+          old = in(reg) &running_thread.stack_pos,
+          new = in(reg) &next_thread.stack_pos);
 
         switch_thread();
     }
 }
 
+/// Switches from the current thread to the thread whose stack  
+/// pointer is passed in r1. The function saves the current context
+/// to the stack of the current thread, saves the stack pointer in the
+/// TCB and switches the stack pointer with the stack pointer of the
+/// new thread. It then pops the context off the new threads stack
+/// and returns to the now different instruction pointed to by the
+/// Link Register.
 #[naked]
 unsafe extern "C" fn switch_thread() {
     asm!(

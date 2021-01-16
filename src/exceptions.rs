@@ -58,6 +58,7 @@ unsafe fn SoftwareInterrupt() {
         }
         Ok(Syscalls::ExitThread) => {
             debug!("syscall: ExitThread");
+            super::threads::exit();
         }
         _ => {
             error!("unknown syscall id {}", service_id);

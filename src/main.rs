@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(alloc_error_handler)]
 #![feature(naked_functions)]
+#![feature(drain_filter)]
 #![feature(asm)]
 #![allow(unused_imports)]
 
@@ -96,9 +97,13 @@ pub unsafe extern "C" fn _start() -> ! {
 }
 
 static mut DBGU_BUFFER: Vec<char> = Vec::<char>::new();
-static mut PRINT_SYSTEM_TIMER_TASK3: bool = false;
+static mut RNG: Option<Pcg64> = None;
+static mut TASK3_ACTIVE: bool = false;
+static mut TASK4_ACTIVE: bool = false;
 
-/// Initializes the operating system
+/// Initializes the operating system.
+///
+/// TODO: Add detailed description
 pub fn boot() {
     memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
 
@@ -108,7 +113,7 @@ pub fn boot() {
         env!("CARGO_PKG_VERSION")
     );
 
-    logger::init_logger(log::LevelFilter::Trace);
+    logger::init_logger(log::LevelFilter::Info);
     debug!("processor mode {:?}", processor::get_processor_mode());
 
     // Initialize needed interrupts
@@ -121,20 +126,26 @@ pub fn boot() {
         || {
             // sys_timer_interrrupt_handler
             // print ! if task3 app is active
-            if unsafe { PRINT_SYSTEM_TIMER_TASK3 } {
+            if unsafe { TASK3_ACTIVE } {
                 println!("!");
             }
+            if unsafe { TASK4_ACTIVE } {
+                print!("!");
+            }
             interrupt_controller::mark_end_of_interrupt!();
-            processor::set_interrupts_enabled!(false);
             threads::schedule();
         },
         move || unsafe {
             // dbgu_interrupt_handler,fires when rxready is set
             // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator
-            DBGU_BUFFER.push(
-                dbgu::read_char().expect("there should be char availabe in interrupt") as u8
-                    as char,
-            );
+            let last_char =
+                dbgu::read_char().expect("there should be char availabe in interrupt") as u8;
+            DBGU_BUFFER.push(last_char as char);
+            if TASK4_ACTIVE {
+                threads::create_thread(move || {
+                    task4_print(last_char as char);
+                });
+            }
             interrupt_controller::mark_end_of_interrupt!();
         },
     );
@@ -144,16 +155,12 @@ pub fn boot() {
     // Switch to user code
     processor::switch_processor_mode!(processor::ProcessorMode::User);
 
+    unsafe {
+        RNG = Some(Pcg64::seed_from_u64(0xDEADBEEF));
+    }
+
     fn eval_thread() {
         debug!("processor mode {:?}", processor::get_processor_mode());
-
-        for id in 1..5 {
-            let simple_thread = move || {
-                debug!("processor mode {:?}", processor::get_processor_mode());
-                println!("thread: simple_thread {}", id);
-            };
-            threads::create_thread(simple_thread);
-        }
 
         loop {
             println!("thread: eval running");
@@ -173,14 +180,70 @@ const KEY_ENTER: char = 0xD as char;
 const KEY_BACKSPACE: char = 0x8 as char;
 const KEY_DELETE: char = 0x7F as char;
 
+/// wait for x realtime clock units
+fn wait(units: u32) {
+    let last = system_timer::get_current_real_time();
+    loop {
+        if system_timer::get_current_real_time() - last > units {
+            break;
+        }
+    }
+}
+
+/// prints a character for a random range between min and max
+fn print_character_random(c: char, min: usize, max: usize) {
+    unsafe {
+        for _ in 0..RNG.as_mut().unwrap().gen_range(min, max) {
+            print!("{}", c);
+        }
+    }
+}
+
+fn task4_print(last_char: char) {
+    // print 3 times and wait between
+    print_character_random(last_char, 1, 20);
+    wait(500);
+    print_character_random(last_char, 1, 20);
+    wait(500);
+    print_character_random(last_char, 1, 20);
+}
+
+fn task4() {
+    loop {
+        // check for a new char in the dbgu buffer
+        if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
+            // quit on q
+            if last_char == 'q' {
+                break;
+            }
+        }
+    }
+}
+
+fn task3() {
+    loop {
+        // check for a new char in the dbgu buffer
+        if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
+            // quit on q
+            if last_char == 'q' {
+                break;
+            }
+            // print 3 times and wait between
+            print_character_random(last_char, 1, 20);
+            wait(500);
+            print_character_random(last_char, 1, 20);
+            wait(500);
+            print_character_random(last_char, 1, 20);
+        }
+    }
+}
+
 /// Simple Read–eval–print loop with some basic commands
 pub fn eval_check() -> bool {
-    // initialize rng for task3
-    let mut rng = Pcg64::seed_from_u64(0xDEADBEEF);
     let mut char_buf = alloc::string::String::new();
 
     println!("waiting for input... (press ENTER to echo)");
-    println!("available commands: task3, uptime, swi, undi, dabort, quit");
+    println!("available commands: task3, task4, uptime, swi, undi, dabort, quit");
 
     loop {
         if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
@@ -219,45 +282,16 @@ pub fn eval_check() -> bool {
         "uptime" => {
             println!("{}", system_timer::get_current_real_time());
         }
-        // task3 app
-        "task3" => {
-            unsafe {
-                PRINT_SYSTEM_TIMER_TASK3 = true;
-            }
-            loop {
-                // check for a new char in the dbgu buffer
-                if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
-                    // quit on q
-                    if last_char == 'q' {
-                        unsafe {
-                            PRINT_SYSTEM_TIMER_TASK3 = false;
-                        }
-                        break;
-                    }
-                    /// wait for x realtime clock units
-                    fn wait(units: u32) {
-                        let last = system_timer::get_current_real_time();
-                        loop {
-                            if system_timer::get_current_real_time() - last > units {
-                                break;
-                            }
-                        }
-                    }
-                    // prints a character for a random range between min and max
-                    let mut print_character_random = |c: char, min: usize, max: usize| {
-                        for _ in 0..rng.gen_range(min, max) {
-                            print!("{}", c);
-                        }
-                    };
-                    // print 3 times and wait between
-                    print_character_random(last_char, 1, 20);
-                    wait(500);
-                    print_character_random(last_char, 1, 20);
-                    wait(500);
-                    print_character_random(last_char, 1, 20);
-                }
-            }
-        }
+        "task3" => unsafe {
+            TASK3_ACTIVE = true;
+            task3();
+            TASK3_ACTIVE = false;
+        },
+        "task4" => unsafe {
+            TASK4_ACTIVE = true;
+            task4();
+            TASK4_ACTIVE = false;
+        },
         "quit" => {
             return true;
         }
