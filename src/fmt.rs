@@ -21,10 +21,10 @@ macro_rules! println {
 
 #[macro_export]
 macro_rules! print_with_stack {
-    ($($arg:tt)*) =>  {
+    ($size:tt, $($arg:tt)*) =>  {
         {
             use core::fmt::Write;
-            let mut send_buf = arrayvec::ArrayString::<[u8; 64]>::new();
+            let mut send_buf = arrayvec::ArrayString::<[u8; $size]>::new();
             write!(&mut send_buf, $($arg)*).expect("Can't write");
             crate::fmt::send_str(&send_buf);
         }
@@ -33,10 +33,10 @@ macro_rules! print_with_stack {
 
 #[macro_export]
 macro_rules! println_with_stack {
-    () => (crate::print_with_stack!("\n"));
-    ($($arg:tt)*) => {
-        crate::print_with_stack!($($arg)*);
-        crate::print_with_stack!("\n");
+    () => (crate::print_with_stack!(4, "\n"));
+    ($size:tt, $($arg:tt)*) => {
+        crate::print_with_stack!($size, $($arg)*);
+        crate::print_with_stack!(4, "\n");
     }
 }
 

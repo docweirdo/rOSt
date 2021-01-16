@@ -60,7 +60,13 @@ where
 {
     fn idle_thread() {
         crate::println!("idle thread");
-        loop {}
+        loop {
+            unsafe {
+                // wait for interrupt low power mode
+                asm!("mov r0, 0
+                      mcr p15, 0, r0, c7, c0, 4");
+            }
+        }
     }
     create_thread(idle_thread);
 
@@ -91,7 +97,10 @@ where
 /// users closure and provides an `exit_thread()` guard beneath.  
 unsafe extern "C" fn new_thread_entry() {
     processor::set_interrupts_enabled!(true);
-    processor::switch_processor_mode!(processor::ProcessorMode::User);
+    // run idle thread in system mode for low power mode
+    if RUNNING_THREAD_ID > 0 {
+        processor::switch_processor_mode!(processor::ProcessorMode::User);
+    }
 
     (THREADS[RUNNING_THREAD_ID].entry)();
     exit_thread();
@@ -184,6 +193,10 @@ pub fn schedule() {
             next_thread_pos += 1;
             if next_thread_pos == THREADS.len() {
                 next_thread_pos = 1;
+                if running_thread.id == 0 {
+                    debug_assert!(THREADS.iter().skip(1).all(|t| t.state != ThreadState::Ready));
+                    return;
+                }
             }
             if next_thread_pos == running_thread_pos {
                 if running_thread.state == ThreadState::Stopped {
