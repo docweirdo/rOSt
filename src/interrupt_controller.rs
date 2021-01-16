@@ -72,6 +72,7 @@ unsafe fn Interrupt() {
 
 macro_rules! _mark_end_of_interrupt{
     () => {
+        #[allow(unused_unsafe)]
         unsafe { asm!("
             ldr r0, ={}
             str r0, [r0, #{}]

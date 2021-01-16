@@ -30,6 +30,7 @@ pub fn get_processor_mode() -> ProcessorMode {
 /// Clobbers r0.
 macro_rules! _switch_processor_mode {
     ($mode:expr) => {
+        #[allow(unused_unsafe)]
         unsafe {
             asm!(
                 "
@@ -50,6 +51,7 @@ pub(crate) use _switch_processor_mode as switch_processor_mode;
 /// Clobbers r0.
 macro_rules! _set_interrupts_enabled {
     (false) => {
+        #[allow(unused_unsafe)]
         unsafe {
             asm!(
                 "
@@ -61,6 +63,7 @@ macro_rules! _set_interrupts_enabled {
         }
     };
     (true) => {
+        #[allow(unused_unsafe)]
         unsafe {
             asm!(
                 "
