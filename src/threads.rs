@@ -223,15 +223,17 @@ pub fn schedule() {
             trace!("thread: {} {:?}", thread.id, thread.state);
         }
 
-        trace!(
+        debug!(
             "switch thread from {} sp:{:#X} to {} sp:{:#X}",
             running_thread.id,
-            running_thread.stack_current as u32,
+            running_thread
+                .stack_start
+                .offset_from(running_thread.stack_current) as u32,
             next_thread.id,
-            next_thread.stack_current as u32
+            next_thread
+                .stack_start
+                .offset_from(next_thread.stack_current) as u32
         );
-
-        crate::print!("\n");
 
         asm!("mov r0, {old}
           mov r1, {new}",

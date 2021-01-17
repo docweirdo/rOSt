@@ -3,20 +3,21 @@ use crate::println;
 use crate::processor;
 use alloc::boxed::Box;
 use core::convert::TryFrom;
-use log::{debug, error};
+use log::{debug, error, trace};
 use num_enum::TryFromPrimitive;
+use processor::ProcessorMode;
 use rost_macros::exception;
 
 #[rost_macros::exception]
 unsafe fn Reset() {
-    println!("reset");
+    error!("reset handler");
     panic!();
 }
 
 #[rost_macros::exception]
 unsafe fn UndefinedInstruction() {
-    debug!("undefined instruction handler");
-    debug!("processor mode {:?}", processor::get_processor_mode());
+    trace!("undefined instruction handler");
+    debug_assert!(processor::get_processor_mode() == ProcessorMode::Undefined);
 
     let mut lr: usize;
     asm!("mov {}, r14", out(reg) lr);
@@ -44,22 +45,20 @@ unsafe extern "C" fn SoftwareInterrupt(_r0: u32, r1: u32, _r2: u32) {
     // asm!("mov {}, r12", out(reg) lr);
     // println!("software interrupt at {:#X}", lr-4);
 
-    debug!("software interrupt handler");
-    debug!("processor mode {:?}", processor::get_processor_mode());
-
-    //debug!("requested service {:?}", service_id);
+    trace!("software interrupt handler");
+    debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     match Syscalls::try_from(service_id) {
         Ok(Syscalls::YieldThread) => {
-            debug!("syscall: YieldThread");
+            trace!("syscall: YieldThread");
             super::threads::schedule();
         }
         Ok(Syscalls::CreateThread) => {
-            debug!("syscall: CreateThread {}", r1);
+            trace!("syscall: CreateThread {}", r1);
             // super::threads::create_thread();
         }
         Ok(Syscalls::ExitThread) => {
-            debug!("syscall: ExitThread");
+            trace!("syscall: ExitThread");
             super::threads::exit_internal();
         }
         _ => {
@@ -71,7 +70,8 @@ unsafe extern "C" fn SoftwareInterrupt(_r0: u32, r1: u32, _r2: u32) {
 #[rost_macros::exception]
 unsafe fn PrefetchAbort() {
     error!("prefetch abort handler");
-    debug!("processor mode {:?}", processor::get_processor_mode());
+    debug_assert!(processor::get_processor_mode() == ProcessorMode::Abort);
+
     let mut lr: usize;
     asm!("mov {}, r14", out(reg) lr);
 
@@ -82,7 +82,7 @@ unsafe fn PrefetchAbort() {
 #[rost_macros::exception]
 unsafe fn DataAbort() {
     error!("data abort handler");
-    debug!("processor mode {:?}", processor::get_processor_mode());
+    debug_assert!(processor::get_processor_mode() == ProcessorMode::Abort);
 
     let mut lr: usize;
     asm!("mov {}, pc", out(reg) lr);
