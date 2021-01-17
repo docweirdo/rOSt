@@ -208,7 +208,10 @@ fn wait(units: u32) {
 }
 
 /// prints a character for a random range between min and max
-fn print_character_random(c: char, min: usize, max: usize) {
+fn print_character_random<T>(c: T, min: usize, max: usize)
+where
+    T: core::fmt::Display,
+{
     unsafe {
         for _ in 0..RNG.as_mut().unwrap().gen_range(min, max) {
             print!("{}", c);
@@ -255,12 +258,16 @@ fn task3() {
     }
 }
 
+static mut THREAD_TEST_COUNT: usize = 0;
+
 /// Simple Read–eval–print loop with some basic commands
 pub fn eval_check() -> bool {
     let mut char_buf = alloc::string::String::new();
 
     println!("waiting for input... (press ENTER to echo)");
-    println!("available commands: task3, task4, uptime, swi, undi, dabort, quit");
+    println!(
+        "available commands: task3, task4, uptime, thread_test, threads, undi, swi, dabort, quit"
+    );
 
     loop {
         if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
@@ -308,6 +315,22 @@ pub fn eval_check() -> bool {
             TASK4_ACTIVE = true;
             task4();
             TASK4_ACTIVE = false;
+        },
+        "threads" => {
+            threads::print_threads();
+        }
+        "thread_test" => unsafe {
+            for id in 0..20 {
+                threads::create_thread(move || {
+                    THREAD_TEST_COUNT += 1;
+                    threads::yield_thread();
+                    THREAD_TEST_COUNT += 1;
+                    threads::yield_thread();
+                    THREAD_TEST_COUNT += 1;
+                    println!("end thread {} {}", id, THREAD_TEST_COUNT);
+                });
+            }
+            threads::yield_thread();
         },
         "quit" => {
             return true;

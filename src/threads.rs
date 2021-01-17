@@ -110,6 +110,21 @@ pub fn yield_thread() {
     }
 }
 
+/// prints information about current threads
+pub fn print_threads() -> () {
+    unsafe {
+        crate::println!("threads:");
+        for thread in &THREADS {
+            crate::println!(
+                "  id: {} state: {:?} last_stack_size: {:#X}",
+                thread.id,
+                thread.state,
+                thread.stack_start.offset_from(thread.stack_current) as u32
+            );
+        }
+    }
+}
+
 /// Prepares newly created threads for lifes challenges.   
 ///
 /// Gets executed when the thread is scheduled for the first time  
@@ -210,7 +225,7 @@ pub fn schedule() {
             .iter()
             .position(|t| t.id == RUNNING_THREAD_ID)
             .unwrap();
-        let mut running_thread = &mut THREADS[running_thread_pos];
+        let running_thread = &mut THREADS[running_thread_pos];
 
         let mut next_thread_pos = running_thread_pos;
         while THREADS[next_thread_pos].state != ThreadState::Ready {
@@ -231,17 +246,13 @@ pub fn schedule() {
                 }
             }
         }
-        let mut next_thread = &mut THREADS[next_thread_pos];
+        let next_thread = &mut THREADS[next_thread_pos];
 
         next_thread.state = ThreadState::Running;
         if running_thread.state == ThreadState::Running {
             running_thread.state = ThreadState::Ready;
         }
         RUNNING_THREAD_ID = next_thread.id;
-
-        for thread in &THREADS {
-            trace!("thread: {} {:?}", thread.id, thread.state);
-        }
 
         debug!(
             "t#: {} switch thread from {} sp:{:#X} to {} sp:{:#X}",
