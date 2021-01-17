@@ -45,7 +45,7 @@ enum ThreadState {
 /// Initializes the first thread to run on the processor after boot.
 pub fn init_runtime<F>(entry: F) -> !
 where
-    F: FnMut() + 'static,
+    F: FnMut() + 'static + Send,
 {
     fn idle_thread() {
         crate::println!("idle thread");
@@ -81,7 +81,7 @@ where
 /// System call to stop and exit the current thread via software interrupt.
 pub fn create_thread<F>(entry: F) -> usize
 where
-    F: FnMut() + 'static,
+    F: FnMut() + 'static + Send,
 {
     // TODO: move to kernel
     let id = create_thread_internal(entry);
@@ -156,7 +156,7 @@ unsafe extern "C" fn new_thread_entry() {
 /// to `new_thread_entry()`.
 pub fn create_thread_internal<F>(entry: F) -> usize
 where
-    F: FnMut() + 'static,
+    F: FnMut() + 'static + Send,
 {
     unsafe {
         let id = LAST_THREAD_ID;
