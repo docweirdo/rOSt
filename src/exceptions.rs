@@ -1,6 +1,7 @@
 use crate::memory;
 use crate::println;
 use crate::processor;
+use alloc::boxed::Box;
 use core::convert::TryFrom;
 use log::{debug, error};
 use num_enum::TryFromPrimitive;
@@ -33,7 +34,7 @@ enum Syscalls {
 }
 
 #[rost_macros::exception]
-unsafe fn SoftwareInterrupt() {
+unsafe extern "C" fn SoftwareInterrupt(_r0: u32, r1: u32, _r2: u32) {
     let mut service_id: u32;
     asm!("LDR     r12, [r12, #-4] 
           BIC r12,r12,#0xff000000  
@@ -54,11 +55,12 @@ unsafe fn SoftwareInterrupt() {
             super::threads::schedule();
         }
         Ok(Syscalls::CreateThread) => {
-            debug!("syscall: CreateThread");
+            debug!("syscall: CreateThread {}", r1);
+            // super::threads::create_thread();
         }
         Ok(Syscalls::ExitThread) => {
             debug!("syscall: ExitThread");
-            super::threads::exit();
+            super::threads::exit_internal();
         }
         _ => {
             error!("unknown syscall id {}", service_id);
