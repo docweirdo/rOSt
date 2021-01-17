@@ -1,7 +1,8 @@
 use super::processor;
-use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::{alloc::alloc, alloc::dealloc, boxed::Box};
+use core::{alloc::Layout, panic};
 use log::debug;
 use log::trace;
 
@@ -12,8 +13,8 @@ struct TCB {
     id: usize,
     state: ThreadState,
     entry: Box<dyn FnMut()>,
-    stack_pos: u32,
-    stack: Vec<u8>,
+    stack_current: *mut u8,
+    stack_start: *mut u8,
 }
 
 static mut THREADS: Vec<TCB> = Vec::<TCB>::new();
@@ -28,33 +29,8 @@ enum ThreadState {
     Stopped,
 }
 
-use core::mem;
-
-#[repr(C, align(8))]
-struct AlignToFour([u8; 8]);
-
-/// Creates a vector which is aligned to four bytes in memory.
-unsafe fn aligned_vec(n_bytes: usize) -> Vec<u8> {
-    // Lazy math to ensure we always have enough.
-    let n_units = (n_bytes / mem::size_of::<AlignToFour>()) + 1;
-
-    let mut aligned: Vec<AlignToFour> = Vec::with_capacity(n_units);
-
-    let ptr = aligned.as_mut_ptr();
-    let len_units = aligned.len();
-    let cap_units = aligned.capacity();
-
-    mem::forget(aligned);
-
-    Vec::from_raw_parts(
-        ptr as *mut u8,
-        len_units * mem::size_of::<AlignToFour>(),
-        cap_units * mem::size_of::<AlignToFour>(),
-    )
-}
-
 /// Initializes the first thread to run on the processor after boot.
-pub fn init<F>(entry: F) -> !
+pub fn init_runtime<F>(entry: F) -> !
 where
     F: FnMut() + 'static,
 {
@@ -63,8 +39,10 @@ where
         loop {
             unsafe {
                 // wait for interrupt low power mode
-                asm!("mov r0, 0
-                      mcr p15, 0, r0, c7, c0, 4");
+                asm!(
+                    "mov r0, 0
+                     mcr p15, 0, r0, c7, c0, 4"
+                );
             }
         }
     }
@@ -74,18 +52,44 @@ where
     unsafe {
         RUNNING_THREAD_ID = id;
         THREADS[id].state = ThreadState::Running;
-        THREADS[id].stack_pos = THREADS[id]
-            .stack
-            .as_mut_ptr()
-            .offset(THREADS[id].stack.capacity() as isize) as u32;
-        for v in &mut THREADS[id].stack {
-            *v = 0;
-        }
+        THREADS[id].stack_current = THREADS[id].stack_start;
 
         asm!("mov sp, {stack_address}
               mov pc, {start_address}",
-              stack_address = in(reg) THREADS[id].stack_pos,
+              stack_address = in(reg) THREADS[id].stack_current,
               start_address = in(reg) new_thread_entry as u32, options(noreturn));
+    }
+}
+
+/// System call to stop and exit the current thread via software interrupt.
+pub fn create_thread<F>(entry: F) -> usize
+where
+    F: FnMut() + 'static,
+{
+    // TODO: move to kernel
+    let id = create_thread_internal(entry);
+    let out_id: usize;
+    unsafe {
+        asm!("mov r1, {}
+              swi #30
+              mov {}, r1", in(reg) id, out(reg) out_id);
+    }
+    debug_assert!(id == out_id);
+    return id;
+}
+
+/// System call to stop and exit the current thread via software interrupt.
+pub fn exit_thread() {
+    unsafe {
+        asm!("swi #31");
+    }
+}
+
+/// System call to yield the current thread via software interrupt.
+#[allow(dead_code)]
+pub fn yield_thread() {
+    unsafe {
+        asm!("swi #32");
     }
 }
 
@@ -114,53 +118,50 @@ unsafe extern "C" fn new_thread_entry() {
 /// This fake stack contains a Processor Status in System Mode and
 /// the address which gets popped into the Link Register pointing
 /// to `new_thread_entry()`.
-pub fn create_thread<F>(entry: F) -> usize
+pub fn create_thread_internal<F>(entry: F) -> usize
 where
     F: FnMut() + 'static,
 {
     unsafe {
         let id = LAST_THREAD_ID;
         LAST_THREAD_ID += 1;
+
+        let layout = Layout::from_size_align(THREAD_STACK_SIZE, core::mem::align_of::<u64>())
+            .expect("Bad layout");
+
+        let buffer = alloc(layout);
+        if buffer.is_null() {
+            panic!("buffer is null");
+        }
+
+        let stack_start = buffer.offset(THREAD_STACK_SIZE as isize);
+
         let mut tcb = TCB {
             id: id,
             state: ThreadState::Ready,
-            stack_pos: 0,
-            stack: aligned_vec(THREAD_STACK_SIZE),
+            stack_current: stack_start,
+            stack_start: stack_start,
             entry: Box::new(entry),
         };
 
-        let capacity = tcb.stack.capacity();
-        let s_ptr: *mut u8 = tcb.stack.as_mut_ptr().offset(capacity as isize);
-        tcb.stack_pos = s_ptr.offset(15 * -4) as u32;
+        tcb.stack_current = tcb.stack_current.offset(15 * -4);
 
         core::ptr::write_volatile(
-            (tcb.stack_pos) as *mut u32,
+            (tcb.stack_current.offset(0)) as *mut u32,
             processor::ProcessorMode::System as u32,
         );
-        core::ptr::write_volatile((tcb.stack_pos + 4) as *mut u32, new_thread_entry as u32);
+        core::ptr::write_volatile(
+            (tcb.stack_current.offset(4)) as *mut u32,
+            new_thread_entry as u32,
+        );
 
         THREADS.push(tcb);
         return id;
     }
 }
 
-/// System call to stop and exit the current thread via software interrupt.
-pub fn exit_thread() {
-    unsafe {
-        asm!("swi #31");
-    }
-}
-
-/// System call to yield the current thread via software interrupt.
-#[allow(dead_code)]
-pub fn yield_thread() {
-    unsafe {
-        asm!("swi #32");
-    }
-}
-
 /// Function called by the Kernel to set the running thread to `ThreadState::Stopped`.
-pub fn exit() {
+pub fn exit_internal() {
     unsafe {
         THREADS
             .iter_mut()
@@ -194,7 +195,10 @@ pub fn schedule() {
             if next_thread_pos == THREADS.len() {
                 next_thread_pos = 1;
                 if running_thread.id == 0 {
-                    debug_assert!(THREADS.iter().skip(1).all(|t| t.state != ThreadState::Ready));
+                    debug_assert!(THREADS
+                        .iter()
+                        .skip(1)
+                        .all(|t| t.state != ThreadState::Ready));
                     return;
                 }
             }
@@ -222,17 +226,17 @@ pub fn schedule() {
         trace!(
             "switch thread from {} sp:{:#X} to {} sp:{:#X}",
             running_thread.id,
-            running_thread.stack_pos,
+            running_thread.stack_current as u32,
             next_thread.id,
-            next_thread.stack_pos
+            next_thread.stack_current as u32
         );
 
         crate::print!("\n");
 
         asm!("mov r0, {old}
           mov r1, {new}",
-          old = in(reg) &running_thread.stack_pos,
-          new = in(reg) &next_thread.stack_pos);
+          old = in(reg) &running_thread.stack_current,
+          new = in(reg) &next_thread.stack_current);
 
         switch_thread();
     }

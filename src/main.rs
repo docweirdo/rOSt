@@ -102,7 +102,7 @@ static mut TASK3_ACTIVE: bool = false;
 static mut TASK4_ACTIVE: bool = false;
 
 /// The amount of SysTicks before the scheduler gets called.
-static SCHEDULER_INTERVAL: u32 = 5;    
+static SCHEDULER_INTERVAL: u32 = 5;
 static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
 
 /// Initializes the operating system.
@@ -119,7 +119,7 @@ pub fn boot() {
         env!("CARGO_PKG_VERSION")
     );
 
-    logger::init_logger(log::LevelFilter::Info);
+    logger::init_logger(log::LevelFilter::Trace);
 
     // Initialize needed interrupts
 
@@ -139,10 +139,10 @@ pub fn boot() {
             if unsafe { TASK4_ACTIVE } {
                 print!("!");
             }
-            
+
             interrupt_controller::mark_end_of_interrupt!();
 
-            unsafe{
+            unsafe {
                 SCHEDULER_INTERVAL_COUNTER = if SCHEDULER_INTERVAL_COUNTER == 0 {
                     threads::schedule();
                     SCHEDULER_INTERVAL
@@ -150,8 +150,6 @@ pub fn boot() {
                     SCHEDULER_INTERVAL_COUNTER - 1
                 }
             }
-           
-            
         },
         move || unsafe {
             debug_assert!(processor::interrupts_enabled());
@@ -162,7 +160,7 @@ pub fn boot() {
                 dbgu::read_char().expect("there should be char availabe in interrupt") as u8;
 
             DBGU_BUFFER.push(last_char as char);
-            if TASK4_ACTIVE && last_char != 'q' as u8{
+            if TASK4_ACTIVE && last_char != 'q' as u8 {
                 threads::create_thread(move || {
                     task4_print(last_char as char);
                 });
@@ -192,7 +190,7 @@ pub fn boot() {
     }
 
     // noreturn
-    threads::init(eval_thread);
+    threads::init_runtime(eval_thread);
 }
 
 const KEY_ENTER: char = 0xD as char;
