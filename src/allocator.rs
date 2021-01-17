@@ -1,6 +1,8 @@
-use crate::helpers;
+use log::debug;
+
 use crate::println;
 use crate::processor;
+use crate::{helpers, print_with_stack};
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,
@@ -32,11 +34,18 @@ unsafe impl GlobalAlloc for BumpPointerAlloc {
             core::ptr::null_mut()
         } else {
             *head = start + size;
+            if size >= 256 && log::log_enabled!(log::Level::Trace) {
+                print_with_stack!(128, "alloc {:#X} size: {}\n", start, size);
+            }
             start as *mut u8
         }
     }
 
-    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {
+    unsafe fn dealloc(&self, _ptr: *mut u8, layout: Layout) {
+        if layout.size() >= 256 && log::log_enabled!(log::Level::Trace) {
+            print_with_stack!(128, "dealloc {:#X} size: {}\n", _ptr as u32, layout.size());
+        }
+
         // this allocator never deallocates memory
     }
 }

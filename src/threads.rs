@@ -17,6 +17,19 @@ struct TCB {
     stack_start: *mut u8,
 }
 
+impl Drop for TCB {
+    fn drop(&mut self) {
+        let layout = Layout::from_size_align(THREAD_STACK_SIZE, core::mem::align_of::<u64>())
+            .expect("Bad layout");
+        unsafe {
+            dealloc(
+                self.stack_start.offset(-(THREAD_STACK_SIZE as isize)),
+                layout,
+            );
+        }
+    }
+}
+
 static mut THREADS: Vec<TCB> = Vec::<TCB>::new();
 static mut RUNNING_THREAD_ID: usize = 0;
 static mut LAST_THREAD_ID: usize = 0;
@@ -51,12 +64,16 @@ where
     let id = create_thread(entry);
     unsafe {
         RUNNING_THREAD_ID = id;
-        THREADS[id].state = ThreadState::Running;
-        THREADS[id].stack_current = THREADS[id].stack_start;
+        let thread = THREADS
+            .iter_mut()
+            .find(|t| t.id == RUNNING_THREAD_ID)
+            .unwrap();
+        thread.state = ThreadState::Running;
+        thread.stack_current = thread.stack_start;
 
         asm!("mov sp, {stack_address}
               mov pc, {start_address}",
-              stack_address = in(reg) THREADS[id].stack_current,
+              stack_address = in(reg) thread.stack_current,
               start_address = in(reg) new_thread_entry as u32, options(noreturn));
     }
 }
@@ -106,7 +123,11 @@ unsafe extern "C" fn new_thread_entry() {
         processor::switch_processor_mode!(processor::ProcessorMode::User);
     }
 
-    (THREADS[RUNNING_THREAD_ID].entry)();
+    (THREADS
+        .iter_mut()
+        .find(|t| t.id == RUNNING_THREAD_ID)
+        .unwrap()
+        .entry)();
     exit_thread();
 }
 
@@ -168,8 +189,6 @@ pub fn exit_internal() {
             .find(|t| t.id == RUNNING_THREAD_ID)
             .unwrap()
             .state = ThreadState::Stopped;
-        // TODO: remove old threads
-        // THREADS.retain(|t| t.state != ThreadState::Stopped || t.id == RUNNING_THREAD_ID);
     }
     schedule();
 }
@@ -183,6 +202,10 @@ pub fn exit_internal() {
 pub fn schedule() {
     unsafe {
         processor::set_interrupts_enabled!(false);
+
+        // remove old threads
+        THREADS.retain(|t| t.state != ThreadState::Stopped || t.id == RUNNING_THREAD_ID);
+
         let running_thread_pos = THREADS
             .iter()
             .position(|t| t.id == RUNNING_THREAD_ID)
@@ -195,10 +218,7 @@ pub fn schedule() {
             if next_thread_pos == THREADS.len() {
                 next_thread_pos = 1;
                 if running_thread.id == 0 {
-                    debug_assert!(THREADS
-                        .iter()
-                        .skip(1)
-                        .all(|t| t.state != ThreadState::Ready));
+                    debug_assert!(THREADS.len() == 1);
                     return;
                 }
             }
@@ -224,7 +244,8 @@ pub fn schedule() {
         }
 
         debug!(
-            "switch thread from {} sp:{:#X} to {} sp:{:#X}",
+            "t#: {} switch thread from {} sp:{:#X} to {} sp:{:#X}",
+            THREADS.len(),
             running_thread.id,
             running_thread
                 .stack_start
