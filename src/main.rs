@@ -119,7 +119,7 @@ pub fn boot() {
         env!("CARGO_PKG_VERSION")
     );
 
-    logger::init_logger(log::LevelFilter::Trace);
+    logger::init_logger(log::LevelFilter::Debug);
 
     // Initialize needed interrupts
 
