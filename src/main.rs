@@ -6,8 +6,6 @@
 #![feature(asm)]
 #![allow(unused_imports)]
 
-#[macro_use]
-extern crate num_derive;
 extern crate alloc;
 
 use alloc::vec::Vec;

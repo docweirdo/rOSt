@@ -1,8 +1,9 @@
 use super::threads;
-use num_traits::{FromPrimitive, ToPrimitive};
+use core::convert::TryFrom;
+use num_enum::TryFromPrimitive;
 
 #[repr(u8)]
-#[derive(FromPrimitive, ToPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(TryFromPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ProcessorMode {
     User = 0x10,
     FIQ = 0x11,
@@ -22,7 +23,7 @@ pub fn get_processor_mode() -> ProcessorMode {
         asm!("MRS {0}, CPSR", out(reg) cpsr);
     }
 
-    ProcessorMode::from_u8((cpsr & 0x1F) as u8).unwrap()
+    ProcessorMode::try_from((cpsr & 0x1F) as u8).unwrap()
 }
 
 /// Switches the processor to the specified mode.  
@@ -45,7 +46,6 @@ macro_rules! _switch_processor_mode {
 }
 
 pub(crate) use _switch_processor_mode as switch_processor_mode;
-
 
 pub fn interrupts_enabled() -> bool {
     let mut cpsr: u32;
