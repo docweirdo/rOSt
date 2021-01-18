@@ -1,14 +1,11 @@
-use crate::memory;
-use crate::println;
-use crate::processor;
-use alloc::boxed::Box;
-use core::{convert::TryFrom, mem::size_of};
-use log::{debug, error, trace};
-use num_enum::TryFromPrimitive;
-use processor::ProcessorMode;
-use rost_macros::exception;
+#![no_std]
+#![no_main]
+#![feature(asm)]
+#![feature(lang_items)]
 
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
+use core::panic::PanicInfo;
+
+#[derive(Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Syscalls {
     SendDBGU = 10,
@@ -20,7 +17,7 @@ pub enum Syscalls {
 
 pub fn send_str_to_dbgu(chars: &str) {
     for character in chars.chars() {
-        crate::syscalls::send_character_to_dbgu(character as u8);
+        send_character_to_dbgu(character as u8);
     }
 }
 
@@ -45,21 +42,19 @@ pub fn receive_character_from_dbgu() -> Option<u8> {
 }
 
 /// System call to create a thread via software interrupt.
-pub extern "C" fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
-    let id: usize;
-    unsafe {
-        let entry_raw: (u32, u32) =
-            core::mem::transmute(Box::into_raw(Box::new(entry) as Box<dyn FnMut() + 'static>));
+// pub extern "C" fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
+//     let id: usize;
+//     unsafe {
+//         let entry_raw: (u32, u32) =
+//             core::mem::transmute(Box::into_raw(Box::new(entry) as Box<dyn FnMut() + 'static>));
 
-        asm!("mov r0, {0}
-              mov r1, {1}
-              swi #30
-              mov {2}, r0", in(reg) entry_raw.0, in(reg) entry_raw.1, out(reg) id);
-
-        debug_assert!(id == crate::threads::THREADS.last().unwrap().id);
-    }
-    return id;
-}
+//         asm!("mov r0, {0}
+//               mov r1, {1}
+//               swi #30
+//               mov {2}, r0", in(reg) entry_raw.0, in(reg) entry_raw.1, out(reg) id);
+//     }
+//     return id;
+// }
 
 /// System call to stop and exit the current thread via software interrupt.
 pub extern "C" fn exit_thread() {
@@ -73,4 +68,17 @@ pub extern "C" fn yield_thread() {
     unsafe {
         asm!("swi #32");
     }
+}
+
+#[no_mangle]
+pub fn main() -> () {
+    send_str_to_dbgu("test");
+    send_str_to_dbgu("test");
+}
+
+/// Rust panic handler
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    send_str_to_dbgu("panic");
+    loop {}
 }

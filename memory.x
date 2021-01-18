@@ -1,5 +1,6 @@
 
 EXTERN(ExceptionsJump)
+EXTERN(usercode)
 ENTRY(_start)
 
 MEMORY {
@@ -19,6 +20,7 @@ SECTIONS
 
   .text : {
     *(.text);
+    *(.usercode);
   } > SDRAM
 
   
