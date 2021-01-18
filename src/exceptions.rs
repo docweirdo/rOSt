@@ -1,6 +1,7 @@
 use crate::memory;
 use crate::println;
 use crate::processor;
+use crate::syscalls::Syscalls;
 use alloc::boxed::Box;
 use core::convert::TryFrom;
 use log::{debug, error, trace};
@@ -17,7 +18,7 @@ unsafe fn Reset() {
 #[rost_macros::exception]
 unsafe fn UndefinedInstruction() {
     trace!("undefined instruction handler");
-    debug_assert!(processor::get_processor_mode() == ProcessorMode::Undefined);
+    debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     let mut lr: usize;
     asm!("mov {}, r14", out(reg) lr);
@@ -26,43 +27,42 @@ unsafe fn UndefinedInstruction() {
     panic!();
 }
 
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
-#[repr(u32)]
-enum Syscalls {
-    CreateThread = 30,
-    ExitThread = 31,
-    YieldThread = 32,
-}
-
 #[rost_macros::exception]
-unsafe extern "C" fn SoftwareInterrupt(_r0: u32, r1: u32, _r2: u32) {
-    let mut service_id: u32;
-    asm!("LDR     r12, [r12, #-4] 
-          BIC r12,r12,#0xff000000  
-          MOV {}, r12", out(reg) service_id);
-
+unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_id: u32) -> usize {
     // let mut lr: usize;
     // asm!("mov {}, r12", out(reg) lr);
     // println!("software interrupt at {:#X}", lr-4);
 
-    trace!("software interrupt handler");
+    trace!(
+        "software interrupt handler {} {} {} {}",
+        arg0,
+        arg1,
+        arg2,
+        service_id
+    );
     debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     match Syscalls::try_from(service_id) {
         Ok(Syscalls::YieldThread) => {
             trace!("syscall: YieldThread");
             super::threads::schedule();
+            return 0;
         }
         Ok(Syscalls::CreateThread) => {
-            trace!("syscall: CreateThread {}", r1);
-            // super::threads::create_thread();
+            trace!("syscall: CreateThread");
+            let raw_entry: *mut dyn FnMut() = core::mem::transmute((arg0, arg1));
+            let entry = Box::<dyn FnMut() + 'static>::from_raw(raw_entry);
+            let id = super::threads::create_thread_internal(entry);
+            return id;
         }
         Ok(Syscalls::ExitThread) => {
             trace!("syscall: ExitThread");
             super::threads::exit_internal();
+            return 0;
         }
         _ => {
             error!("unknown syscall id {}", service_id);
+            panic!();
         }
     }
 }
@@ -70,7 +70,7 @@ unsafe extern "C" fn SoftwareInterrupt(_r0: u32, r1: u32, _r2: u32) {
 #[rost_macros::exception]
 unsafe fn PrefetchAbort() {
     error!("prefetch abort handler");
-    debug_assert!(processor::get_processor_mode() == ProcessorMode::Abort);
+    debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     let mut lr: usize;
     asm!("mov {}, r14", out(reg) lr);
@@ -82,7 +82,7 @@ unsafe fn PrefetchAbort() {
 #[rost_macros::exception]
 unsafe fn DataAbort() {
     error!("data abort handler");
-    debug_assert!(processor::get_processor_mode() == ProcessorMode::Abort);
+    debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     let mut lr: usize;
     asm!("mov {}, pc", out(reg) lr);

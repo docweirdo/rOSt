@@ -23,6 +23,7 @@ mod interrupt_controller;
 mod logger;
 mod memory;
 mod processor;
+mod syscalls;
 mod system_timer;
 mod threads;
 
@@ -159,7 +160,7 @@ pub fn boot() {
 
             DBGU_BUFFER.push(last_char as char);
             if TASK4_ACTIVE && last_char != 'q' as u8 {
-                threads::create_thread(move || {
+                syscalls::create_thread(move || {
                     task4_print(last_char as char);
                 });
             }
@@ -168,9 +169,6 @@ pub fn boot() {
     );
 
     processor::set_interrupts_enabled!(true);
-
-    // Switch to user code
-    processor::switch_processor_mode!(processor::ProcessorMode::User);
 
     unsafe {
         RNG = Some(Pcg64::seed_from_u64(0xDEADBEEF));
@@ -319,16 +317,16 @@ pub fn eval_check() -> bool {
         }
         "thread_test" => unsafe {
             for id in 0..20 {
-                threads::create_thread(move || {
+                syscalls::create_thread(move || {
                     THREAD_TEST_COUNT += 1;
-                    threads::yield_thread();
+                    syscalls::yield_thread();
                     THREAD_TEST_COUNT += 1;
-                    threads::yield_thread();
+                    syscalls::yield_thread();
                     THREAD_TEST_COUNT += 1;
                     println!("end thread {} {}", id, THREAD_TEST_COUNT);
                 });
             }
-            threads::yield_thread();
+            syscalls::yield_thread();
         },
         "quit" => {
             return true;

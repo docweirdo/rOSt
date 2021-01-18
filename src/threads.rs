@@ -9,10 +9,10 @@ use log::trace;
 const THREAD_STACK_SIZE: usize = 1024 * 8;
 
 #[repr(C, align(4))]
-struct TCB {
-    id: usize,
+pub struct TCB {
+    pub id: usize,
     state: ThreadState,
-    entry: Box<dyn FnMut()>,
+    entry: Box<dyn FnMut() + 'static>,
     stack_current: *mut u8,
     stack_start: *mut u8,
 }
@@ -30,7 +30,7 @@ impl Drop for TCB {
     }
 }
 
-static mut THREADS: Vec<TCB> = Vec::<TCB>::new();
+pub static mut THREADS: Vec<TCB> = Vec::<TCB>::new();
 static mut RUNNING_THREAD_ID: usize = 0;
 static mut LAST_THREAD_ID: usize = 0;
 
@@ -45,8 +45,9 @@ enum ThreadState {
 /// Initializes the first thread to run on the processor after boot.
 pub fn init_runtime<F>(entry: F) -> !
 where
-    F: FnMut() + 'static + Send,
+    F: FnMut() + 'static,
 {
+    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     fn idle_thread() {
         crate::println!("idle thread");
         loop {
@@ -59,9 +60,12 @@ where
             }
         }
     }
-    create_thread(idle_thread);
 
-    let id = create_thread(entry);
+    let id = create_thread_internal(Box::new(idle_thread));
+    debug_assert!(id == 0);
+
+    let id = create_thread_internal(Box::new(entry));
+    debug_assert!(id == 1);
     unsafe {
         RUNNING_THREAD_ID = id;
         let thread = THREADS
@@ -75,38 +79,6 @@ where
               mov pc, {start_address}",
               stack_address = in(reg) thread.stack_current,
               start_address = in(reg) new_thread_entry as u32, options(noreturn));
-    }
-}
-
-/// System call to stop and exit the current thread via software interrupt.
-pub fn create_thread<F>(entry: F) -> usize
-where
-    F: FnMut() + 'static + Send,
-{
-    // TODO: move to kernel
-    let id = create_thread_internal(entry);
-    let out_id: usize;
-    unsafe {
-        asm!("mov r1, {}
-              swi #30
-              mov {}, r1", in(reg) id, out(reg) out_id);
-    }
-    debug_assert!(id == out_id);
-    return id;
-}
-
-/// System call to stop and exit the current thread via software interrupt.
-pub fn exit_thread() {
-    unsafe {
-        asm!("swi #31");
-    }
-}
-
-/// System call to yield the current thread via software interrupt.
-#[allow(dead_code)]
-pub fn yield_thread() {
-    unsafe {
-        asm!("swi #32");
     }
 }
 
@@ -132,6 +104,7 @@ pub fn print_threads() -> () {
 /// and switches the processor to `ProcessorMode::User`. Then calls the  
 /// users closure and provides an `exit_thread()` guard beneath.  
 unsafe extern "C" fn new_thread_entry() {
+    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     processor::set_interrupts_enabled!(true);
     // run idle thread in system mode for low power mode
     if RUNNING_THREAD_ID > 0 {
@@ -143,7 +116,7 @@ unsafe extern "C" fn new_thread_entry() {
         .find(|t| t.id == RUNNING_THREAD_ID)
         .unwrap()
         .entry)();
-    exit_thread();
+    crate::syscalls::exit_thread();
 }
 
 /// Creates TCB and Stack for a new thread.
@@ -154,10 +127,8 @@ unsafe extern "C" fn new_thread_entry() {
 /// This fake stack contains a Processor Status in System Mode and
 /// the address which gets popped into the Link Register pointing
 /// to `new_thread_entry()`.
-pub fn create_thread_internal<F>(entry: F) -> usize
-where
-    F: FnMut() + 'static + Send,
-{
+pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
+    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         let id = LAST_THREAD_ID;
         LAST_THREAD_ID += 1;
@@ -177,7 +148,7 @@ where
             state: ThreadState::Ready,
             stack_current: stack_start,
             stack_start: stack_start,
-            entry: Box::new(entry),
+            entry: entry,
         };
 
         tcb.stack_current = tcb.stack_current.offset(15 * -4);
@@ -198,6 +169,7 @@ where
 
 /// Function called by the Kernel to set the running thread to `ThreadState::Stopped`.
 pub fn exit_internal() {
+    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         THREADS
             .iter_mut()
@@ -215,6 +187,7 @@ pub fn exit_internal() {
 /// calls `switch_thread` to switch to the selected thread.  
 /// TCBs and Stacks of threads with `ThreadState::Stopped` are removed.
 pub fn schedule() {
+    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         processor::set_interrupts_enabled!(false);
 

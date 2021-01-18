@@ -45,21 +45,39 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    let valid_signature = f.sig.constness.is_none()
+    let mut valid_signature = f.sig.constness.is_none()
         && f.vis == Visibility::Inherited
-        //&& f.sig.abi.is_none()
-        //&& f.sig.inputs.is_empty()
+        && f.sig.abi.is_none()
+        && f.sig.inputs.is_empty()
         && f.sig.generics.params.is_empty()
         && f.sig.generics.where_clause.is_none()
-        && f.sig.variadic.is_none()
-        && match f.sig.output {
-            ReturnType::Default => true,
-            ReturnType::Type(_, ref ty) => match **ty {
-                Type::Tuple(ref tuple) => tuple.elems.is_empty(),
-                Type::Never(..) => true,
-                _ => false,
-            },
-        };
+        && f.sig.variadic.is_none();
+    &&match f.sig.output {
+        ReturnType::Default => true,
+        ReturnType::Type(_, ref ty) => match **ty {
+            Type::Tuple(ref tuple) => tuple.elems.is_empty(),
+            Type::Never(..) => true,
+            _ => false,
+        },
+    };
+
+    if exn == Exception::SoftwareInterrupt {
+        valid_signature = f.sig.constness.is_none()
+            && f.vis == Visibility::Inherited
+            //&& f.sig.abi.is_none()
+            //&& f.sig.inputs.is_empty()
+            && f.sig.generics.params.is_empty()
+            && f.sig.generics.where_clause.is_none()
+            && f.sig.variadic.is_none();
+        // &&match f.sig.output {
+        //     ReturnType::Default => true,
+        //     ReturnType::Type(_, ref ty) => match **ty {
+        //         Type::Tuple(ref tuple) => tuple.elems.is_empty(),
+        //         Type::Never(..) => true,
+        //         _ => false,
+        //     },
+        // };
+    }
 
     if !valid_signature {
         return parse::Error::new(
@@ -77,22 +95,32 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let use_nested_interrupt;
     let mark_end_of_interrupt;
+    let dont_restore_registers;
     let lr_size;
 
     match exn {
         Exception::Interrupt => {
             use_nested_interrupt = true;
             mark_end_of_interrupt = true;
+            dont_restore_registers = false;
             lr_size = 4;
         }
-        Exception::SoftwareInterrupt | Exception::UndefinedInstruction | Exception::Reset => {
+        Exception::SoftwareInterrupt => {
             use_nested_interrupt = false;
             mark_end_of_interrupt = false;
+            dont_restore_registers = true;
+            lr_size = 0;
+        }
+        Exception::UndefinedInstruction | Exception::Reset => {
+            use_nested_interrupt = false;
+            mark_end_of_interrupt = false;
+            dont_restore_registers = false;
             lr_size = 0;
         }
         Exception::PrefetchAbort | Exception::DataAbort => {
             use_nested_interrupt = false;
             mark_end_of_interrupt = false;
+            dont_restore_registers = true;
             lr_size = 4;
         }
     }
@@ -103,7 +131,7 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
         #[doc(hidden)]
         #[export_name = #ident_s]
         pub unsafe extern "C" fn #tramp_ident() {
-            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt, mark_end_of_interrupt=#mark_end_of_interrupt);
+            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt, mark_end_of_interrupt=#mark_end_of_interrupt, dont_restore_registers=#dont_restore_registers);
         }
 
         #f
