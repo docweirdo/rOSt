@@ -211,7 +211,7 @@ where
     T: core::fmt::Display,
 {
     unsafe {
-        for _ in 0..RNG.as_mut().unwrap().gen_range(min, max) {
+        for _ in 0..RNG.as_mut().unwrap().gen_range(min..max) {
             print!("{}", c);
         }
     }
