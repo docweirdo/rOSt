@@ -17,11 +17,11 @@ pub enum Syscalls {
 }
 
 /// System call to create a thread via software interrupt.
-pub fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
+pub extern "C" fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
     let id: usize;
     unsafe {
         let entry_raw: (u32, u32) =
-            core::mem::transmute(Box::new(entry) as Box<dyn FnMut() + 'static>);
+            core::mem::transmute(Box::into_raw(Box::new(entry) as Box<dyn FnMut() + 'static>));
 
         asm!("mov r0, {0}
               mov r1, {1}
@@ -34,14 +34,14 @@ pub fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
 }
 
 /// System call to stop and exit the current thread via software interrupt.
-pub fn exit_thread() {
+pub extern "C" fn exit_thread() {
     unsafe {
         asm!("swi #31");
     }
 }
 
 /// System call to yield the current thread via software interrupt.
-pub fn yield_thread() {
+pub extern "C" fn yield_thread() {
     unsafe {
         asm!("swi #32");
     }
