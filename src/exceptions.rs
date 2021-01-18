@@ -60,6 +60,18 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
             super::threads::exit_internal();
             return 0;
         }
+        Ok(Syscalls::ReceiveDBGU) => {
+            trace!("syscall: ReceiveDBGU");
+            if let Some(ch) = super::dbgu::read_char() {
+                return ch as usize;
+            }
+            return 0xFFFF;
+        }
+        Ok(Syscalls::SendDBGU) => {
+            trace!("syscall: SendDBGU");
+            super::dbgu::write_char(arg0 as u8 as char);
+            return 0;
+        }
         _ => {
             error!("unknown syscall id {}", service_id);
             panic!();

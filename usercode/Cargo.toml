@@ -1,0 +1,16 @@
+[package]
+authors = ["Karl Skomski <karl@skomski.com>", "Corin Baurmann <corin.baurmann@gmail.com>"]
+categories = ["embedded", "no-std"]
+description = "usercode example rOSt"
+license = "unlicense"
+name = "rost-user"
+version = "0.1.0"
+edition = "2018"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[dependencies]
