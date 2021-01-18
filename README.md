@@ -29,12 +29,13 @@ This is a project for university containing bits and pieces of what might become
     * https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
 
 ### Todo:
-* Test production compilation
-* work addresses and offsets into structs for each component
+* fix release compilation
 * implement proper allocator
-* convert exception_routine macro to nice macro :D
-* fix nested exceptions (swi in intq)
-* test for proper stack usage and size
-* prepare for new naked macro
 * implement correct differentiation for system interrupt handler (line 1)
 * document every important function, macro or variable
+* Configure system clocks and implement usage
+* make syscalls language agnostic (c callable)
+* implement sleep
+* think about structure of current interrupt closures
+* explore possibilty of providing interrupt-hooks to call customized closures
+* look into thread signaling and signal handlers
