@@ -1,11 +1,7 @@
-use crate::print;
 use crate::println;
-use arrayvec::ArrayString;
-use core::fmt::Write;
-
-use log::{Level, Metadata, Record};
-
 use log::LevelFilter;
+use log::{Metadata, Record};
+
 static LOGGER: SimpleLogger = SimpleLogger;
 
 /// Initializes the global logger.

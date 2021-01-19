@@ -1,8 +1,4 @@
-use log::debug;
-
-use crate::println;
-use crate::processor;
-use crate::{helpers, print_with_stack};
+use crate::print_with_stack;
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::UnsafeCell,

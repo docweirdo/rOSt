@@ -1,9 +1,6 @@
-use core::debug_assert_ne;
-
 use crate::helpers::{read_register, write_register};
 use crate::processor;
 use crate::system_timer;
-use log::debug;
 use rost_macros;
 
 pub struct AIC;
