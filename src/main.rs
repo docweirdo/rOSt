@@ -178,9 +178,18 @@ pub fn boot() {
         debug_assert!(processor::ProcessorMode::User == processor::get_processor_mode());
         debug_assert!(processor::interrupts_enabled());
 
-        loop {
-            if eval_check() {
-                break;
+        // check for custom user code
+        if unsafe { core::ptr::read(0x2100_0000 as *const u32) > 0 } {
+            unsafe {
+                asm!("
+                  mov lr,  r1
+                  mov pc, r0", in("r1") syscalls::exit_thread, in("r0") 0x2100_0000);
+            }
+        } else {
+            loop {
+                if eval_check() {
+                    break;
+                }
             }
         }
     }

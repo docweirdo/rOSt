@@ -24,15 +24,6 @@ fn main() {
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
 
-    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    File::create(out.join("usercode.o"))
-        .unwrap()
-        .write_all(include_bytes!(
-            "usercode/target/armv4t-none-eabi/debug/rost-user"
-        ))
-        .unwrap();
-    println!("cargo:rustc-link-search={}", out.display());
-
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`
     // here, we ensure the build script is only re-run when

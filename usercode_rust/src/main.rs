@@ -72,8 +72,8 @@ pub extern "C" fn yield_thread() {
 
 #[no_mangle]
 pub fn main() -> () {
-    send_str_to_dbgu("test");
-    send_str_to_dbgu("test");
+    send_str_to_dbgu("bumstest\n");
+    send_str_to_dbgu("test\n");
 }
 
 /// Rust panic handler

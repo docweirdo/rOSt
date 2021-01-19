@@ -1,13 +1,14 @@
 ENTRY(main)
 
 MEMORY {
-   MAIN : ORIGIN = 0x0, LENGTH = 8M
+   MAIN : ORIGIN = 0x21000000, LENGTH = 8M
 }
 
 SECTIONS
 {
   .usercode : {
-    *(.text);
+    *(.text.main);
+    *(.text.*);
   } > MAIN
 
   /DISCARD/ :
