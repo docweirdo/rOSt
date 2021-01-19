@@ -1,12 +1,12 @@
-use crate::memory;
 use crate::println;
 use crate::processor;
-use crate::syscalls::Syscalls;
+use crate::{memory, system_timer};
 use alloc::boxed::Box;
-use core::convert::TryFrom;
+use core::{alloc::Layout, convert::TryFrom};
 use log::{debug, error, trace};
 use num_enum::TryFromPrimitive;
 use processor::ProcessorMode;
+use rost_api::syscalls::Syscalls;
 use rost_macros::exception;
 
 #[rost_macros::exception]
@@ -62,7 +62,7 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
         }
         Ok(Syscalls::ReceiveDBGU) => {
             trace!("syscall: ReceiveDBGU");
-            if let Some(ch) = super::dbgu::read_char() {
+            if let Some(ch) = crate::DBGU_BUFFER.pop() {
                 return ch as usize;
             }
             return 0xFFFF;
@@ -71,6 +71,23 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
             trace!("syscall: SendDBGU");
             super::dbgu::write_char(arg0 as u8 as char);
             return 0;
+        }
+        Ok(Syscalls::Allocate) => {
+            trace!("syscall: Allocate");
+            let layout = Layout::from_size_align(arg0 as usize, arg1 as usize).expect("Bad layout");
+
+            return alloc::alloc::alloc(layout) as usize;
+        }
+        Ok(Syscalls::Deallocate) => {
+            trace!("syscall: Deallocate");
+            let layout = Layout::from_size_align(arg1 as usize, arg2 as usize).expect("Bad layout");
+
+            alloc::alloc::dealloc(arg0 as *mut u8, layout);
+            return 0;
+        }
+        Ok(Syscalls::GetCurrentRealTime) => {
+            trace!("syscall: GetCurrentRealTime");
+            return system_timer::get_current_real_time() as usize;
         }
         _ => {
             error!("unknown syscall id {}", service_id);

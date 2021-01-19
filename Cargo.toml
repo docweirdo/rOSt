@@ -12,6 +12,7 @@ log = { git = "https://github.com/skomski/log", default-features = false}
 rand =  { version = "0.8.2", default-features = false}
 rand_pcg = "0.3"
 rost-macros = { path = "macros", version = "=0.1.0" }
+rost-api = { path = "api", version = "=0.1.0" }
 num_enum = {version = "0.5", default-features = false }
 
 [build-dependencies]

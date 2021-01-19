@@ -1,26 +1,50 @@
-use crate::memory;
-use crate::println;
-use crate::processor;
 use alloc::boxed::Box;
-use core::{convert::TryFrom, mem::size_of};
-use log::{debug, error, trace};
 use num_enum::TryFromPrimitive;
-use processor::ProcessorMode;
-use rost_macros::exception;
 
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u32)]
 pub enum Syscalls {
     SendDBGU = 10,
     ReceiveDBGU = 11,
+    Allocate = 20,
+    Deallocate = 21,
     CreateThread = 30,
     ExitThread = 31,
     YieldThread = 32,
+    GetCurrentRealTime = 40,
+}
+
+pub fn get_current_realtime() -> usize {
+    let time: usize;
+    unsafe {
+        asm!("swi #{}
+              mov {}, r0", const Syscalls::GetCurrentRealTime as u32, out(reg) time);
+    }
+    return time;
+}
+
+pub fn allocate(size: usize, align: usize) -> *mut u8 {
+    let out_ptr: usize;
+    unsafe {
+        asm!("
+              swi #{}
+              mov {}, r0
+            ", const Syscalls::Allocate as u32, out(reg) out_ptr, in("r0") size, in("r1") align,);
+    }
+    return out_ptr as *mut u8;
+}
+
+pub fn deallocate(ptr: *mut u8, size: usize, align: usize) {
+    unsafe {
+        asm!("
+              swi #{call_id}
+            ", call_id = const Syscalls::Deallocate as u32, in("r0") ptr, in("r1") size, in("r2") align);
+    }
 }
 
 pub fn send_str_to_dbgu(chars: &str) {
     for character in chars.chars() {
-        crate::syscalls::send_character_to_dbgu(character as u8);
+        send_character_to_dbgu(character as u8);
     }
 }
 
@@ -55,8 +79,6 @@ pub extern "C" fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
               mov r1, {1}
               swi #30
               mov {2}, r0", in(reg) entry_raw.0, in(reg) entry_raw.1, out(reg) id);
-
-        debug_assert!(id == crate::threads::THREADS.last().unwrap().id);
     }
     return id;
 }

@@ -1,0 +1,11 @@
+[package]
+authors = ["Karl Skomski <karl@skomski.com>", "Corin Baurmann <corin.baurmann@gmail.com>"]
+categories = ["embedded", "no-std"]
+description = "systemcall api for rOSt"
+license = "unlicense"
+name = "rost-api"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+num_enum = {version = "0.5", default-features = false }
