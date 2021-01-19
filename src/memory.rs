@@ -1,10 +1,4 @@
 use crate::helpers;
-use crate::println;
-use crate::processor;
-use core::{
-    alloc::{GlobalAlloc, Layout},
-    cell::UnsafeCell,
-};
 
 const SRAM_END: usize = 0x2300_0000;
 const STACK_SIZE: usize = 1024 * 4;

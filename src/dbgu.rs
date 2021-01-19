@@ -1,4 +1,5 @@
 use crate::helpers;
+use alloc::vec::Vec;
 
 /*
 
@@ -80,6 +81,8 @@ pub unsafe fn dbgu_setup() {
     // write_volatile(DBGU.offset(DBGU_BRGR / 4), 65536);
 //}
 */
+
+pub static mut DBGU_BUFFER: Vec<char> = Vec::<char>::new();
 
 /// Enable or disable DBGU Receive Interrupt
 pub fn set_dbgu_recv_interrupt(value: bool) {

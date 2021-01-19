@@ -1,4 +1,3 @@
-use super::threads;
 use core::convert::TryFrom;
 use num_enum::TryFromPrimitive;
 

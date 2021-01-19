@@ -4,15 +4,11 @@
 #![feature(naked_functions)]
 #![feature(drain_filter)]
 #![feature(asm)]
-#![allow(unused_imports)]
 
 extern crate alloc;
 
-use alloc::vec::Vec;
 use core::panic::PanicInfo;
-use log::{debug, error, info};
-use rand::prelude::*;
-use rand_pcg::Pcg64;
+use log::error;
 
 mod allocator;
 mod dbgu;
@@ -25,6 +21,7 @@ mod memory;
 mod processor;
 mod system_timer;
 mod threads;
+mod user_tasks;
 
 /// Sets stack pointers and calls boot function
 #[no_mangle]
@@ -94,15 +91,6 @@ pub unsafe extern "C" fn _start() -> ! {
         options(noreturn));
 }
 
-pub static mut DBGU_BUFFER: Vec<char> = Vec::<char>::new();
-static mut RNG: Option<Pcg64> = None;
-static mut TASK3_ACTIVE: bool = false;
-static mut TASK4_ACTIVE: bool = false;
-
-/// The amount of SysTicks before the scheduler gets called.
-static SCHEDULER_INTERVAL: u32 = 5;
-static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
-
 /// Initializes the operating system.
 ///
 /// TODO: Add detailed description
@@ -131,21 +119,22 @@ pub fn boot() {
 
             // sys_timer_interrrupt_handler
             // print ! if task3 app is active
-            if unsafe { TASK3_ACTIVE } {
+            // TODO: do not forget to remove both
+            if unsafe { user_tasks::TASK3_ACTIVE } {
                 println!("!");
             }
-            if unsafe { TASK4_ACTIVE } {
+            if unsafe { user_tasks::TASK4_ACTIVE } {
                 print!("!");
             }
 
             interrupt_controller::mark_end_of_interrupt!();
 
             unsafe {
-                SCHEDULER_INTERVAL_COUNTER = if SCHEDULER_INTERVAL_COUNTER == 0 {
+                threads::SCHEDULER_INTERVAL_COUNTER = if threads::SCHEDULER_INTERVAL_COUNTER == 0 {
                     threads::schedule();
-                    SCHEDULER_INTERVAL
+                    threads::SCHEDULER_INTERVAL
                 } else {
-                    SCHEDULER_INTERVAL_COUNTER - 1
+                    threads::SCHEDULER_INTERVAL_COUNTER - 1
                 }
             }
         },
@@ -157,40 +146,27 @@ pub fn boot() {
             let last_char =
                 dbgu::read_char().expect("there should be char availabe in interrupt") as u8;
 
-            DBGU_BUFFER.push(last_char as char);
-            if TASK4_ACTIVE && last_char != 'q' as u8 {
-                rost_api::syscalls::create_thread(move || {
-                    task4_print(last_char as char);
-                });
-            }
+            dbgu::DBGU_BUFFER.push(last_char as char);
+
+            // TODO: do not forget to remove
+            user_tasks::task4_dbgu(last_char as char);
+
             interrupt_controller::mark_end_of_interrupt!();
         },
     );
 
     processor::set_interrupts_enabled!(true);
 
-    unsafe {
-        RNG = Some(Pcg64::seed_from_u64(0xDEADBEEF));
-    }
-
     fn start_thread() {
         debug_assert!(processor::ProcessorMode::User == processor::get_processor_mode());
         debug_assert!(processor::interrupts_enabled());
 
-        rost_api::syscalls::create_thread(eval_thread);
+        rost_api::syscalls::create_thread(user_tasks::read_eval_print_loop);
         // syscalls::create_thread(custom_user_code_thread);
     }
 
     // noreturn
     threads::init_runtime(start_thread);
-}
-
-fn eval_thread() {
-    loop {
-        if eval_check() {
-            break;
-        }
-    }
 }
 
 fn custom_user_code_thread() {
@@ -208,146 +184,6 @@ fn custom_user_code_thread() {
             CUSTOM_CODE_ADDRESS
         );
     }
-}
-
-const KEY_ENTER: char = 0xD as char;
-const KEY_BACKSPACE: char = 0x8 as char;
-const KEY_DELETE: char = 0x7F as char;
-
-/// wait for x realtime clock units
-fn wait(units: u32) {
-    let last = system_timer::get_current_real_time();
-    loop {
-        if system_timer::get_current_real_time() - last > units {
-            break;
-        }
-    }
-}
-
-/// prints a character for a random range between min and max
-fn print_character_random<T>(c: T, min: usize, max: usize)
-where
-    T: core::fmt::Display,
-{
-    unsafe {
-        for _ in 0..RNG.as_mut().unwrap().gen_range(min..max) {
-            print!("{}", c);
-        }
-    }
-}
-
-fn task4_print(last_char: char) {
-    // print 3 times and wait between
-    print_character_random(last_char, 1, 20);
-    wait(500);
-    print_character_random(last_char, 1, 20);
-    wait(500);
-    print_character_random(last_char, 1, 20);
-}
-
-fn task4() {
-    loop {
-        // check for a new char in the dbgu buffer
-        if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
-            // quit on q
-            if last_char == 'q' {
-                break;
-            }
-        }
-    }
-}
-
-static mut THREAD_TEST_COUNT: usize = 0;
-
-/// Simple Read–eval–print loop with some basic commands
-pub fn eval_check() -> bool {
-    let mut char_buf = alloc::string::String::new();
-
-    println!("waiting for input... (press ENTER to echo)");
-    println!(
-        "available commands: task3, task4, uptime, thread_test, threads, undi, swi, dabort, custom, quit"
-    );
-
-    loop {
-        if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
-            if last_char == KEY_ENTER {
-                break;
-            }
-            if last_char == KEY_DELETE || last_char == KEY_BACKSPACE {
-                char_buf.pop();
-            } else {
-                char_buf.push(last_char);
-            }
-        }
-    }
-
-    println!("Received: {}", char_buf);
-    debug!(
-        "current heap size: {:#X}, left: {:#X}",
-        allocator::get_current_heap_size(),
-        allocator::get_heap_size_left()
-    );
-
-    match char_buf.as_str() {
-        "swi" => unsafe {
-            asm!("swi #99");
-        },
-        "undi" => unsafe {
-            asm!(".word 0xf7f0a000");
-        },
-        "dabort" => unsafe {
-            asm!(
-                "
-                 ldr r0, =0x90000000
-                 str r0, [r0]"
-            );
-        },
-        "uptime" => {
-            println!("{}", system_timer::get_current_real_time());
-        }
-        "custom" => {
-            rost_api::syscalls::create_thread(custom_user_code_thread);
-        }
-        "task3" => unsafe {
-            TASK3_ACTIVE = true;
-            let id = rost_api::syscalls::create_thread(custom_user_code_thread);
-            loop {
-                if threads::is_thread_done(id) {
-                    break;
-                }
-            }
-            TASK3_ACTIVE = false;
-        },
-        "task4" => unsafe {
-            TASK4_ACTIVE = true;
-            task4();
-            TASK4_ACTIVE = false;
-        },
-        "threads" => {
-            threads::print_threads();
-        }
-        "thread_test" => unsafe {
-            for id in 0..20 {
-                rost_api::syscalls::create_thread(move || {
-                    THREAD_TEST_COUNT += 1;
-                    rost_api::syscalls::yield_thread();
-                    THREAD_TEST_COUNT += 1;
-                    rost_api::syscalls::yield_thread();
-                    THREAD_TEST_COUNT += 1;
-                    println!("end thread {} {}", id, THREAD_TEST_COUNT);
-                });
-            }
-            rost_api::syscalls::yield_thread();
-        },
-        "quit" => {
-            return true;
-        }
-        _ => {
-            println!("-> Unknown command");
-        }
-    }
-
-    false
 }
 
 /// Rust panic handler

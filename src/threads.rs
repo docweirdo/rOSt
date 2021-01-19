@@ -1,12 +1,13 @@
 use super::processor;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::{alloc::alloc, alloc::dealloc, boxed::Box};
 use core::{alloc::Layout, panic};
 use log::debug;
-use log::trace;
 
 const THREAD_STACK_SIZE: usize = 1024 * 8;
+/// The amount of SysTicks before the scheduler gets called.
+pub(crate) static SCHEDULER_INTERVAL: u32 = 5;
+pub(crate) static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
 
 #[repr(C, align(4))]
 pub struct TCB {

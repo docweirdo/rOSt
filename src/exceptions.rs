@@ -1,13 +1,10 @@
-use crate::println;
 use crate::processor;
 use crate::{memory, system_timer};
 use alloc::boxed::Box;
 use core::{alloc::Layout, convert::TryFrom};
-use log::{debug, error, trace};
-use num_enum::TryFromPrimitive;
+use log::{error, trace};
 use processor::ProcessorMode;
 use rost_api::syscalls::Syscalls;
-use rost_macros::exception;
 
 #[rost_macros::exception]
 unsafe fn Reset() {
@@ -62,7 +59,7 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
         }
         Ok(Syscalls::ReceiveDBGU) => {
             trace!("syscall: ReceiveDBGU");
-            if let Some(ch) = crate::DBGU_BUFFER.pop() {
+            if let Some(ch) = crate::dbgu::DBGU_BUFFER.pop() {
                 return ch as usize;
             }
             return 0xFFFF;
