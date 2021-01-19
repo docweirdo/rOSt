@@ -1,11 +1,6 @@
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
 runner = "qemu-system-arm-portux-fork -M portux920t -m 64M -nographic -s -kernel"
-#runner = "qemu-system-arm-portux-fork -M portux920t -m 64M -nographic -s -device loader,file=usercode_rust/target/armv4t-none-eabi/debug/rost-user,addr=0x21000000 -kernel"
-#runner = "qemu-system-arm-portux-fork -M portux920t -m 64M -nographic -s -device loader,file=usercode_c/target/usercode_c.o,addr=0x21000000 -kernel"
-
-#[target.'cfg(all(target_arch = "arm", target_os = "none"))']
-#runner = "gdb-multiarch --nh -ex 'set architecture arm' -ex 'file target/armv4t-none-eabi/debug/rost' -ex 'target remote localhost:1234' -ex 'layout split'"
 
 rustflags = [
   # This is needed if your flash or ram addresses are not aligned to 0x10000 in memory.x

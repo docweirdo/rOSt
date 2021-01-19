@@ -1,0 +1,42 @@
+[tasks.build]
+command = "cargo"
+args = ["build"]
+
+[tasks.run-debug-mode]
+command = "qemu-system-arm-portux-fork"
+args = ["-M", "portux920t", "-m", "64M", "-nographic", "-s", "-S", "-kernel", "target/armv4t-none-eabi/debug/rost"]
+
+[tasks.debugger]
+command = "arm-none-eabi-gdb"
+args = ["--nh", "-ex", "file target/armv4t-none-eabi/debug/rost", "-ex", "target remote localhost:1234", "-ex", "layout split"]
+
+[tasks.build-usercode-c]
+command = "usercode_c/build.sh"
+
+[tasks.qemu-usercode-c]
+command = "qemu-system-arm-portux-fork"
+args = ["-M", "portux920t", "-m", "64M", "-nographic", "-s", "-device",
+        "loader,file=usercode_c/target/usercode_c.o,addr=0x21000000", "-kernel", "target/armv4t-none-eabi/debug/rost"]
+
+[tasks.run-usercode-c]
+dependencies = [
+    "build-usercode-c",
+    "build",
+    "qemu-usercode-c"
+]
+
+[tasks.build-usercode-rust]
+command = "cargo"
+args = ["build", "--manifest-path","usercode_rust/Cargo.toml"]
+
+[tasks.qemu-usercode-rust]
+command = "qemu-system-arm-portux-fork"
+args = ["-M", "portux920t", "-m", "64M", "-nographic", "-s", "-device",
+        "loader,file=usercode_rust/target/armv4t-none-eabi/debug/rost-user,addr=0x21000000", "-kernel", "target/armv4t-none-eabi/debug/rost"]
+
+[tasks.run-usercode-rust]
+dependencies = [
+    "build-usercode-rust",
+    "build",
+    "qemu-usercode-rust"
+]
