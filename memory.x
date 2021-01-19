@@ -1,6 +1,5 @@
 
 EXTERN(ExceptionsJump)
-EXTERN(usercode)
 ENTRY(_start)
 
 MEMORY {
@@ -19,9 +18,29 @@ SECTIONS
   } > SRAM
 
   .text : {
-    *(.text);
-    *(.usercode);
+    *(.text*);
+    _end_text = .;
   } > SDRAM
+
+  .data : {
+    *(.data*);
+    _end_data = .;
+  } > SDRAM
+
+  .rodata : {
+    *(.rodata*);
+    _end_rodata = .;
+  } > SDRAM
+
+  .bss : {
+    *(.bss*);
+    _end_bss = .;
+  } > SDRAM
+
+
+  ASSERT(
+     (_end_bss < 0X21000000),
+     "kernel program data overflows custom code entry")
 
   
   /DISCARD/ :
@@ -30,5 +49,7 @@ SECTIONS
     *(.ARM.exidx);
     *(.ARM.exidx.*);
     *(.ARM.extab.*);
+    *(.ARM.attributes*);
+    *(.debug*);
   }
 }
