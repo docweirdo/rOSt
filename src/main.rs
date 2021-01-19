@@ -174,28 +174,38 @@ pub fn boot() {
         RNG = Some(Pcg64::seed_from_u64(0xDEADBEEF));
     }
 
-    fn eval_thread() {
+    fn start_thread() {
         debug_assert!(processor::ProcessorMode::User == processor::get_processor_mode());
         debug_assert!(processor::interrupts_enabled());
 
-        // check for custom user code
-        if unsafe { core::ptr::read(0x2100_0000 as *const u32) > 0 } {
-            unsafe {
-                asm!("
-                  mov lr,  r1
-                  mov pc, r0", in("r1") syscalls::exit_thread, in("r0") 0x2100_0000);
-            }
-        } else {
-            loop {
-                if eval_check() {
-                    break;
-                }
-            }
-        }
+        syscalls::create_thread(eval_thread);
+        // syscalls::create_thread(custom_user_code_thread);
     }
 
     // noreturn
-    threads::init_runtime(eval_thread);
+    threads::init_runtime(start_thread);
+}
+
+fn eval_thread() {
+    loop {
+        if eval_check() {
+            break;
+        }
+    }
+}
+
+fn custom_user_code_thread() {
+    const CUSTOM_CODE_ADDRESS: usize = 0x2100_0000;
+    // check for custom user code
+    if unsafe { core::ptr::read(CUSTOM_CODE_ADDRESS as *const u32) > 0 } {
+        unsafe {
+            asm!("
+            mov lr,  r1
+            mov pc, r0", in("r1") syscalls::exit_thread, in("r0") CUSTOM_CODE_ADDRESS);
+        }
+    } else {
+        error!("no custom user code loaded into qemu at {:#X}", CUSTOM_CODE_ADDRESS);
+    }
 }
 
 const KEY_ENTER: char = 0xD as char;
@@ -271,7 +281,7 @@ pub fn eval_check() -> bool {
 
     println!("waiting for input... (press ENTER to echo)");
     println!(
-        "available commands: task3, task4, uptime, thread_test, threads, undi, swi, dabort, quit"
+        "available commands: task3, task4, uptime, thread_test, threads, undi, swi, dabort, custom, quit"
     );
 
     loop {
@@ -310,6 +320,9 @@ pub fn eval_check() -> bool {
         },
         "uptime" => {
             println!("{}", system_timer::get_current_real_time());
+        }
+        "custom" => {
+            syscalls::create_thread(custom_user_code_thread);
         }
         "task3" => unsafe {
             TASK3_ACTIVE = true;
