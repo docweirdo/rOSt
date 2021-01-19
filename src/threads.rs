@@ -39,7 +39,7 @@ static mut LAST_THREAD_ID: usize = 0;
 enum ThreadState {
     Ready,
     Running,
-    //  Waiting,
+    // Waiting,
     Stopped,
 }
 
@@ -204,7 +204,7 @@ pub fn schedule() {
     unsafe {
         processor::set_interrupts_enabled!(false);
 
-        // remove old threads
+        // remove stopped threads but not the current one if stopped
         THREADS.retain(|t| t.state != ThreadState::Stopped || t.id == RUNNING_THREAD_ID);
 
         let running_thread_pos = THREADS
@@ -214,20 +214,31 @@ pub fn schedule() {
         let running_thread = &mut THREADS[running_thread_pos];
 
         let mut next_thread_pos = running_thread_pos;
+
+        // simple round-robin-scheduler
+        // find the next thread which is ready from the current position
         while THREADS[next_thread_pos].state != ThreadState::Ready {
             next_thread_pos += 1;
+
+            // cycle from the beginning if last pos in threads array
             if next_thread_pos == THREADS.len() {
+                // start at first real thread after idle
                 next_thread_pos = 1;
+                // but if we are already in the idle thread nothing else to do
                 if running_thread.id == 0 {
                     debug_assert!(THREADS.len() == 1);
                     return;
                 }
             }
+            // back at the thread we started our journey
             if next_thread_pos == running_thread_pos {
+                // no other thread ready and this thread is stopped
+                // then switch to the idle thread
                 if running_thread.state == ThreadState::Stopped {
                     next_thread_pos = 0;
                     break;
                 } else {
+                    // else stay in the same thread
                     return;
                 }
             }
@@ -235,6 +246,7 @@ pub fn schedule() {
         let next_thread = &mut THREADS[next_thread_pos];
 
         next_thread.state = ThreadState::Running;
+        // only switch back old thread to ready if not waiting or stopped
         if running_thread.state == ThreadState::Running {
             running_thread.state = ThreadState::Ready;
         }
