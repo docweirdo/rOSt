@@ -13,16 +13,6 @@ pub static mut RNG: Option<Pcg64> = None;
 pub static mut TASK3_ACTIVE: bool = false;
 pub static mut TASK4_ACTIVE: bool = false;
 
-/// wait for x realtime clock units
-fn wait(units: u32) {
-    let last = system_timer::get_current_real_time();
-    loop {
-        if system_timer::get_current_real_time() - last > units {
-            break;
-        }
-    }
-}
-
 /// prints a character for a random range between min and max
 fn print_character_random<T>(c: T, min: usize, max: usize)
 where
@@ -39,11 +29,11 @@ pub fn task4_dbgu(last_char: char) {
     if unsafe { TASK4_ACTIVE } && last_char != 'q' {
         rost_api::syscalls::create_thread(move || {
             // print 3 times and wait between
-            print_character_random(last_char, 1, 20);
-            wait(500);
-            print_character_random(last_char, 1, 20);
-            wait(500);
-            print_character_random(last_char, 1, 20);
+            print_character_random(last_char, 5, 30);
+            rost_api::syscalls::sleep(1000);
+            print_character_random(last_char, 5, 30);
+            rost_api::syscalls::sleep(1000);
+            print_character_random(last_char, 5, 30);
         });
     }
 }
@@ -125,14 +115,14 @@ pub fn read_eval_print_loop() {
         threads::print_threads();
     });
     add_command("thread_test", || unsafe {
-        for id in 0..20 {
+        for id in 0..10 {
             rost_api::syscalls::create_thread(move || {
                 THREAD_TEST_COUNT += 1;
-                rost_api::syscalls::yield_thread();
+                println!("thread {} slept {}", id, rost_api::syscalls::sleep(50 * id));
                 THREAD_TEST_COUNT += 1;
-                rost_api::syscalls::yield_thread();
+                println!("thread {} slept {}", id, rost_api::syscalls::sleep(50 * id));
                 THREAD_TEST_COUNT += 1;
-                println!("end thread {} {}", id, THREAD_TEST_COUNT);
+                println!("thread end {} {}", id, THREAD_TEST_COUNT);
             });
         }
         rost_api::syscalls::yield_thread();

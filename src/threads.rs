@@ -1,3 +1,5 @@
+use crate::system_timer;
+
 use super::processor;
 use alloc::vec::Vec;
 use alloc::{alloc::alloc, alloc::dealloc, boxed::Box};
@@ -12,10 +14,11 @@ pub(crate) static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
 #[repr(C, align(4))]
 pub struct TCB {
     pub id: usize,
-    state: ThreadState,
+    pub(crate) state: ThreadState,
     entry: Box<dyn FnMut() + 'static>,
     stack_current: *mut u8,
     stack_start: *mut u8,
+    pub(crate) wakeup_timestamp: usize,
 }
 
 impl Drop for TCB {
@@ -36,10 +39,10 @@ static mut RUNNING_THREAD_ID: usize = 0;
 static mut LAST_THREAD_ID: usize = 0;
 
 #[derive(PartialEq, Eq, Debug)]
-enum ThreadState {
+pub(crate) enum ThreadState {
     Ready,
     Running,
-    // Waiting,
+    Waiting,
     Stopped,
 }
 
@@ -95,6 +98,15 @@ pub fn print_threads() -> () {
                 thread.stack_start.offset_from(thread.stack_current) as u32
             );
         }
+    }
+}
+
+pub fn get_current_thread<'a>() -> &'a mut TCB {
+    unsafe {
+        return THREADS
+            .iter_mut()
+            .find(|t| t.id == RUNNING_THREAD_ID)
+            .unwrap();
     }
 }
 
@@ -162,6 +174,7 @@ pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
             stack_current: stack_start,
             stack_start: stack_start,
             entry: entry,
+            wakeup_timestamp: 0,
         };
 
         tcb.stack_current = tcb.stack_current.offset(15 * -4);
@@ -202,6 +215,10 @@ pub fn exit_internal() {
 pub fn schedule() {
     debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
+        if THREADS.is_empty() {
+            log::error!("scheduler called before thread initialization");
+            return;
+        }
         processor::set_interrupts_enabled!(false);
 
         // remove stopped threads but not the current one if stopped
@@ -214,6 +231,19 @@ pub fn schedule() {
         let running_thread = &mut THREADS[running_thread_pos];
 
         let mut next_thread_pos = running_thread_pos;
+
+        let current_timestamp = system_timer::get_current_real_time() as usize;
+        // first check for waiting threads
+        let position = THREADS.iter().position(|t| {
+            t.state == ThreadState::Waiting && t.wakeup_timestamp <= current_timestamp
+        });
+
+        // found waiting thread with elapsed timestamp -> schedule first
+        if let Some(pos) = position {
+            next_thread_pos = pos;
+            THREADS[next_thread_pos].state = ThreadState::Ready;
+            THREADS[next_thread_pos].wakeup_timestamp = 0;
+        }
 
         // simple round-robin-scheduler
         // find the next thread which is ready from the current position
@@ -271,6 +301,7 @@ pub fn schedule() {
           new = in(reg) &next_thread.stack_current);
 
         switch_thread();
+        processor::set_interrupts_enabled!(true);
     }
 }
 

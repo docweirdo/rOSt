@@ -39,3 +39,4 @@ This is a project for university containing bits and pieces of what might become
 * think about structure of current interrupt closures
 * explore possibilty of providing interrupt-hooks to call customized closures
 * look into thread signaling and signal handlers
+* look into struct assiociated methods for TCB instead of direct access or functions

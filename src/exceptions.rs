@@ -1,5 +1,5 @@
-use crate::processor;
 use crate::{memory, system_timer};
+use crate::{processor, threads};
 use alloc::boxed::Box;
 use core::{alloc::Layout, convert::TryFrom};
 use log::{error, trace};
@@ -85,6 +85,18 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
         Ok(Syscalls::GetCurrentRealTime) => {
             trace!("syscall: GetCurrentRealTime");
             return system_timer::get_current_real_time() as usize;
+        }
+        Ok(Syscalls::Sleep) => {
+            trace!("syscall: Sleep");
+            let current_time = system_timer::get_current_real_time() as usize;
+            let current_tcb = threads::get_current_thread();
+
+            current_tcb.wakeup_timestamp = current_time + arg0 as usize;
+            current_tcb.state = threads::ThreadState::Waiting;
+
+            threads::schedule();
+
+            return system_timer::get_current_real_time() as usize - current_time as usize;
         }
         _ => {
             error!("unknown syscall id {}", service_id);

@@ -12,6 +12,7 @@ pub enum Syscalls {
     ExitThread = 31,
     YieldThread = 32,
     GetCurrentRealTime = 40,
+    Sleep = 41,
 }
 
 pub fn get_current_realtime() -> usize {
@@ -21,6 +22,15 @@ pub fn get_current_realtime() -> usize {
               mov {}, r0", const Syscalls::GetCurrentRealTime as u32, out(reg) time);
     }
     return time;
+}
+
+pub fn sleep(time: usize) -> usize {
+    let actual_sleep: usize;
+    unsafe {
+        asm!("swi #{}", 
+        const Syscalls::Sleep as u32, in("r0") time, lateout("r0") actual_sleep)
+    }
+    return actual_sleep;
 }
 
 pub fn allocate(size: usize, align: usize) -> *mut u8 {
