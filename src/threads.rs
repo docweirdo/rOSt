@@ -3,7 +3,7 @@ use crate::system_timer;
 use super::processor;
 use alloc::vec::Vec;
 use alloc::{alloc::alloc, alloc::dealloc, boxed::Box};
-use core::{alloc::Layout, panic};
+use core::{alloc::Layout, debug_assert, panic};
 use log::debug;
 
 const THREAD_STACK_SIZE: usize = 1024 * 8;
@@ -52,6 +52,11 @@ where
     F: FnMut() + 'static,
 {
     debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+
+    unsafe {
+        THREADS.reserve(24);
+    }
+
     fn idle_thread() {
         crate::println!("idle thread");
         loop {
@@ -203,7 +208,24 @@ pub fn exit_internal() {
             .unwrap()
             .state = ThreadState::Stopped;
     }
-    schedule();
+    schedule(None);
+}
+
+pub fn wakeup_elapsed_threads() {
+    unsafe {
+        let current_timestamp = system_timer::get_current_real_time() as usize;
+        // find waiting thread with elapsed timestamp
+        let thread = THREADS
+            .iter_mut()
+            .find(|t| t.state == ThreadState::Waiting && t.wakeup_timestamp <= current_timestamp);
+
+        // found waiting thread with elapsed timestamp -> schedule
+        if let Some(thread) = thread {
+            thread.state = ThreadState::Ready;
+            thread.wakeup_timestamp = 0;
+            schedule(Some(thread.id));
+        }
+    }
 }
 
 /// Schedules and switches to a new thread to run on the processor.    
@@ -212,7 +234,7 @@ pub fn exit_internal() {
 /// through threads until it finds the next one that is ready. It then  
 /// calls `switch_thread` to switch to the selected thread.  
 /// TCBs and Stacks of threads with `ThreadState::Stopped` are removed.
-pub fn schedule() {
+pub fn schedule(next_thread_id: Option<usize>) {
     debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         if THREADS.is_empty() {
@@ -230,50 +252,50 @@ pub fn schedule() {
             .unwrap();
         let running_thread = &mut THREADS[running_thread_pos];
 
-        let mut next_thread_pos = running_thread_pos;
+        let mut next_thread_pos: usize;
 
-        let current_timestamp = system_timer::get_current_real_time() as usize;
-        // first check for waiting threads
-        let position = THREADS.iter().position(|t| {
-            t.state == ThreadState::Waiting && t.wakeup_timestamp <= current_timestamp
-        });
-
-        // found waiting thread with elapsed timestamp -> schedule first
-        if let Some(pos) = position {
-            next_thread_pos = pos;
-            THREADS[next_thread_pos].state = ThreadState::Ready;
-            THREADS[next_thread_pos].wakeup_timestamp = 0;
-        }
-
-        // simple round-robin-scheduler
-        // find the next thread which is ready from the current position
-        while THREADS[next_thread_pos].state != ThreadState::Ready {
-            next_thread_pos += 1;
-
-            // cycle from the beginning if last pos in threads array
-            if next_thread_pos == THREADS.len() {
-                // start at first real thread after idle
-                next_thread_pos = 1;
-                // but if we are already in the idle thread nothing else to do
-                if running_thread.id == 0 {
-                    debug_assert!(THREADS.len() == 1);
-                    return;
-                }
+        // first check for optional argument: specific next_thread_id to schedule
+        if let Some(next_thread_id) = next_thread_id {
+            if let Some(pos) = THREADS.iter().position(|t| t.id == next_thread_id) {
+                next_thread_pos = pos;
+            } else {
+                panic!("scheduler: invalid thread_id given");
             }
-            // back at the thread we started our journey
-            if next_thread_pos == running_thread_pos {
-                // no other thread ready and this thread is stopped
-                // then switch to the idle thread
-                if running_thread.state == ThreadState::Stopped {
-                    next_thread_pos = 0;
-                    break;
-                } else {
-                    // else stay in the same thread
-                    return;
+        } else {
+            next_thread_pos = running_thread_pos;
+
+            // simple round-robin-scheduler
+            // find the next thread which is ready from the current position
+            while THREADS[next_thread_pos].state != ThreadState::Ready {
+                next_thread_pos += 1;
+
+                // cycle from the beginning if last pos in threads array
+                if next_thread_pos == THREADS.len() {
+                    // start at first real thread after idle
+                    next_thread_pos = 1;
+                    // but if we are already in the idle thread nothing else to do
+                    if running_thread.id == 0 {
+                        debug_assert!(THREADS.len() == 1);
+                        return;
+                    }
+                }
+                // back at the thread we started our journey
+                if next_thread_pos == running_thread_pos {
+                    // no other thread ready and this thread is stopped
+                    // then switch to the idle thread
+                    if running_thread.state == ThreadState::Stopped {
+                        next_thread_pos = 0;
+                        break;
+                    } else {
+                        // else stay in the same thread
+                        return;
+                    }
                 }
             }
         }
         let next_thread = &mut THREADS[next_thread_pos];
+        debug_assert!(next_thread.state == ThreadState::Ready);
+        debug_assert!(next_thread.wakeup_timestamp == 0);
 
         next_thread.state = ThreadState::Running;
         // only switch back old thread to ready if not waiting or stopped
@@ -301,6 +323,7 @@ pub fn schedule() {
           new = in(reg) &next_thread.stack_current);
 
         switch_thread();
+        SCHEDULER_INTERVAL_COUNTER = SCHEDULER_INTERVAL;
         processor::set_interrupts_enabled!(true);
     }
 }

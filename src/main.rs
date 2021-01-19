@@ -129,17 +129,18 @@ pub fn boot() {
 
             interrupt_controller::mark_end_of_interrupt!();
 
+            threads::wakeup_elapsed_threads();
+
             unsafe {
-                threads::SCHEDULER_INTERVAL_COUNTER = if threads::SCHEDULER_INTERVAL_COUNTER == 0 {
-                    threads::schedule();
-                    threads::SCHEDULER_INTERVAL
+                if threads::SCHEDULER_INTERVAL_COUNTER == 0 {
+                    threads::schedule(None);
                 } else {
-                    threads::SCHEDULER_INTERVAL_COUNTER - 1
+                    threads::SCHEDULER_INTERVAL_COUNTER = threads::SCHEDULER_INTERVAL_COUNTER - 1;
                 }
             }
         },
         move || unsafe {
-            debug_assert!(processor::interrupts_enabled());
+            // debug_assert!(processor::interrupts_enabled());
 
             // dbgu_interrupt_handler,fires when rxready is set
             // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator

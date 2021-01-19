@@ -42,7 +42,7 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
     match Syscalls::try_from(service_id) {
         Ok(Syscalls::YieldThread) => {
             trace!("syscall: YieldThread");
-            super::threads::schedule();
+            super::threads::schedule(None);
             return 0;
         }
         Ok(Syscalls::CreateThread) => {
@@ -94,7 +94,7 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
             current_tcb.wakeup_timestamp = current_time + arg0 as usize;
             current_tcb.state = threads::ThreadState::Waiting;
 
-            threads::schedule();
+            threads::schedule(None);
 
             return system_timer::get_current_real_time() as usize - current_time as usize;
         }
