@@ -97,6 +97,18 @@ pub fn print_threads() -> () {
     }
 }
 
+pub fn is_thread_done(id: usize) -> bool {
+    unsafe {
+        let thread = THREADS.iter().find(|t| t.id == id);
+        if let Some(thread) = thread {
+            if thread.state == ThreadState::Running || thread.state == ThreadState::Ready {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
 /// Prepares newly created threads for lifes challenges.   
 ///
 /// Gets executed when the thread is scheduled for the first time  
@@ -116,7 +128,7 @@ unsafe extern "C" fn new_thread_entry() {
         .find(|t| t.id == RUNNING_THREAD_ID)
         .unwrap()
         .entry)();
-    crate::syscalls::exit_thread();
+    rost_api::syscalls::exit_thread();
 }
 
 /// Creates TCB and Stack for a new thread.

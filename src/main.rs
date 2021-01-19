@@ -23,7 +23,6 @@ mod interrupt_controller;
 mod logger;
 mod memory;
 mod processor;
-mod syscalls;
 mod system_timer;
 mod threads;
 
@@ -95,7 +94,7 @@ pub unsafe extern "C" fn _start() -> ! {
         options(noreturn));
 }
 
-static mut DBGU_BUFFER: Vec<char> = Vec::<char>::new();
+pub static mut DBGU_BUFFER: Vec<char> = Vec::<char>::new();
 static mut RNG: Option<Pcg64> = None;
 static mut TASK3_ACTIVE: bool = false;
 static mut TASK4_ACTIVE: bool = false;
@@ -160,7 +159,7 @@ pub fn boot() {
 
             DBGU_BUFFER.push(last_char as char);
             if TASK4_ACTIVE && last_char != 'q' as u8 {
-                syscalls::create_thread(move || {
+                rost_api::syscalls::create_thread(move || {
                     task4_print(last_char as char);
                 });
             }
@@ -178,7 +177,7 @@ pub fn boot() {
         debug_assert!(processor::ProcessorMode::User == processor::get_processor_mode());
         debug_assert!(processor::interrupts_enabled());
 
-        syscalls::create_thread(eval_thread);
+        rost_api::syscalls::create_thread(eval_thread);
         // syscalls::create_thread(custom_user_code_thread);
     }
 
@@ -201,10 +200,13 @@ fn custom_user_code_thread() {
         unsafe {
             asm!("
             mov lr,  r1
-            mov pc, r0", in("r1") syscalls::exit_thread, in("r0") CUSTOM_CODE_ADDRESS);
+            mov pc, r0", in("r1") rost_api::syscalls::exit_thread, in("r0") CUSTOM_CODE_ADDRESS);
         }
     } else {
-        error!("no custom user code loaded into qemu at {:#X}", CUSTOM_CODE_ADDRESS);
+        error!(
+            "no custom user code loaded into qemu at {:#X}",
+            CUSTOM_CODE_ADDRESS
+        );
     }
 }
 
@@ -251,24 +253,6 @@ fn task4() {
             if last_char == 'q' {
                 break;
             }
-        }
-    }
-}
-
-fn task3() {
-    loop {
-        // check for a new char in the dbgu buffer
-        if let Some(last_char) = unsafe { DBGU_BUFFER.pop() } {
-            // quit on q
-            if last_char == 'q' {
-                break;
-            }
-            // print 3 times and wait between
-            print_character_random(last_char, 1, 20);
-            wait(500);
-            print_character_random(last_char, 1, 20);
-            wait(500);
-            print_character_random(last_char, 1, 20);
         }
     }
 }
@@ -322,11 +306,16 @@ pub fn eval_check() -> bool {
             println!("{}", system_timer::get_current_real_time());
         }
         "custom" => {
-            syscalls::create_thread(custom_user_code_thread);
+            rost_api::syscalls::create_thread(custom_user_code_thread);
         }
         "task3" => unsafe {
             TASK3_ACTIVE = true;
-            task3();
+            let id = rost_api::syscalls::create_thread(custom_user_code_thread);
+            loop {
+                if threads::is_thread_done(id) {
+                    break;
+                }
+            }
             TASK3_ACTIVE = false;
         },
         "task4" => unsafe {
@@ -339,16 +328,16 @@ pub fn eval_check() -> bool {
         }
         "thread_test" => unsafe {
             for id in 0..20 {
-                syscalls::create_thread(move || {
+                rost_api::syscalls::create_thread(move || {
                     THREAD_TEST_COUNT += 1;
-                    syscalls::yield_thread();
+                    rost_api::syscalls::yield_thread();
                     THREAD_TEST_COUNT += 1;
-                    syscalls::yield_thread();
+                    rost_api::syscalls::yield_thread();
                     THREAD_TEST_COUNT += 1;
                     println!("end thread {} {}", id, THREAD_TEST_COUNT);
                 });
             }
-            syscalls::yield_thread();
+            rost_api::syscalls::yield_thread();
         },
         "quit" => {
             return true;

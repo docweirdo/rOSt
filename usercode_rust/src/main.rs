@@ -2,83 +2,110 @@
 #![no_main]
 #![feature(asm)]
 #![feature(lang_items)]
+#![feature(alloc_error_handler)]
 
 use core::panic::PanicInfo;
+use rand::prelude::*;
+use rand_pcg::Pcg64;
 
-#[derive(Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum Syscalls {
-    SendDBGU = 10,
-    ReceiveDBGU = 11,
-    CreateThread = 30,
-    ExitThread = 31,
-    YieldThread = 32,
-}
+extern crate alloc;
 
-pub fn send_str_to_dbgu(chars: &str) {
-    for character in chars.chars() {
-        send_character_to_dbgu(character as u8);
+static mut RNG: Option<Pcg64> = None;
+
+macro_rules! print {
+    ($($arg:tt)*) =>  {
+            let format_string = alloc::format!($($arg)*);
+            rost_api::syscalls::send_str_to_dbgu(&format_string);
     }
 }
 
-pub fn send_character_to_dbgu(character: u8) {
+macro_rules! println {
+    () => (crate::print!("\n"));
+    ($($arg:tt)*) => {
+        print!($($arg)*);
+        print!("\n");
+    }
+}
+
+/// wait for x realtime clock units
+fn wait(units: usize) {
+    let last = rost_api::syscalls::get_current_realtime();
+    loop {
+        if rost_api::syscalls::get_current_realtime() - last > units {
+            break;
+        }
+    }
+}
+
+/// prints a character for a random range between min and max
+fn print_character_random<T>(c: T, min: usize, max: usize)
+where
+    T: core::fmt::Display,
+{
     unsafe {
-        asm!("mov r0, {}
-              swi #{}
-            ", in(reg) character as u8, const Syscalls::SendDBGU as u32);
+        for _ in 0..RNG.as_mut().unwrap().gen_range(min..max) {
+            print!("{}", c);
+        }
     }
 }
 
-pub fn receive_character_from_dbgu() -> Option<u8> {
-    let out_char: u32;
-    unsafe {
-        asm!("swi #{}
-              mov {}, r0", const Syscalls::ReceiveDBGU as u32, out(reg) out_char);
-    }
-    if out_char == 0xFFFF {
-        return None;
-    }
-    return Some(out_char as u8);
-}
-
-/// System call to create a thread via software interrupt.
-// pub extern "C" fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
-//     let id: usize;
-//     unsafe {
-//         let entry_raw: (u32, u32) =
-//             core::mem::transmute(Box::into_raw(Box::new(entry) as Box<dyn FnMut() + 'static>));
-
-//         asm!("mov r0, {0}
-//               mov r1, {1}
-//               swi #30
-//               mov {2}, r0", in(reg) entry_raw.0, in(reg) entry_raw.1, out(reg) id);
-//     }
-//     return id;
-// }
-
-/// System call to stop and exit the current thread via software interrupt.
-pub extern "C" fn exit_thread() {
-    unsafe {
-        asm!("swi #31");
-    }
-}
-
-/// System call to yield the current thread via software interrupt.
-pub extern "C" fn yield_thread() {
-    unsafe {
-        asm!("swi #32");
+fn task3() {
+    loop {
+        // check for a new char in the dbgu buffer
+        if let Some(last_char) = rost_api::syscalls::receive_character_from_dbgu() {
+            let last_char: char = last_char as char;
+            // quit on q
+            if last_char as char == 'q' {
+                break;
+            }
+            // print 3 times and wait between
+            print_character_random(last_char, 1, 20);
+            rost_api::syscalls::yield_thread();
+            wait(500);
+            print_character_random(last_char, 1, 20);
+            rost_api::syscalls::yield_thread();
+            wait(500);
+            print_character_random(last_char, 1, 20);
+        }
     }
 }
 
 #[no_mangle]
 pub fn main() -> () {
-    send_str_to_dbgu("bumstest\n");
-    send_str_to_dbgu("test\n");
+    unsafe {
+        RNG = Some(Pcg64::seed_from_u64(0xDEADBEEF));
+    }
+    task3();
+    println!("end task3");
 }
 
 /// Rust panic handler
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    send_str_to_dbgu("panic");
+    println!("panic in usercode");
     loop {}
+}
+
+use core::alloc::{GlobalAlloc, Layout};
+
+struct SystemAlloc {}
+
+unsafe impl Sync for SystemAlloc {}
+
+unsafe impl GlobalAlloc for SystemAlloc {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        rost_api::syscalls::allocate(layout.size(), layout.align())
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        rost_api::syscalls::deallocate(ptr, layout.size(), layout.align())
+    }
+}
+
+#[global_allocator]
+static GLOBAL_ALLOCATOR: SystemAlloc = SystemAlloc {};
+
+#[alloc_error_handler]
+fn alloc_error(_layout: core::alloc::Layout) -> ! {
+    panic!("out of memory");
 }
