@@ -5,6 +5,7 @@ use core::{alloc::Layout, convert::TryFrom};
 use log::{error, trace};
 use processor::ProcessorMode;
 use rost_api::syscalls::Syscalls;
+use threads::ThreadState;
 
 #[rost_macros::exception]
 unsafe fn Reset() {
@@ -90,12 +91,42 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
             let current_time = system_timer::get_current_real_time() as usize;
             let current_tcb = threads::get_current_thread();
 
-            current_tcb.wakeup_timestamp = current_time + arg0 as usize;
+            current_tcb.wakeup_timestamp = Some(current_time + arg0 as usize);
             current_tcb.state = threads::ThreadState::Waiting;
 
             threads::schedule(None);
 
             system_timer::get_current_real_time() as usize - current_time as usize
+        }
+        Ok(Syscalls::JoinThread) => {
+            trace!("syscall: JoinThread");
+            let join_thread = {
+                let thread = threads::get_thread_by_id(arg0 as usize);
+                if threads::get_thread_by_id(arg0 as usize).is_none() {
+                    return 0;
+                }
+                thread.unwrap()
+            };
+
+            if join_thread.state == ThreadState::Stopped {
+                return 0;
+            }
+
+            let current_tcb = threads::get_current_thread();
+
+            if join_thread.parent_thread_id != current_tcb.id {
+                panic!("JoinThread: you cannot join a thread which is not your parent thread");
+            }
+
+            current_tcb.joined_thread_ids.insert(arg0 as usize);
+            if arg1 > 0 {
+                let current_time = system_timer::get_current_real_time() as usize;
+                current_tcb.wakeup_timestamp = Some(current_time + arg1 as usize);
+            }
+            current_tcb.state = threads::ThreadState::Waiting;
+
+            threads::schedule(None);
+            0
         }
         _ => {
             error!("unknown syscall id {}", service_id);

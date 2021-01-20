@@ -11,6 +11,7 @@ pub enum Syscalls {
     CreateThread = 30,
     ExitThread = 31,
     YieldThread = 32,
+    JoinThread = 33,
     GetCurrentRealTime = 40,
     Sleep = 41,
 }
@@ -31,6 +32,15 @@ pub fn sleep(time: usize) -> usize {
         const Syscalls::Sleep as u32, in("r0") time, lateout("r0") actual_sleep)
     }
     return actual_sleep;
+}
+
+pub fn join_thread(thread_id: usize, timeout: Option<usize>) -> usize {
+    let child_thread_result: usize;
+    unsafe {
+        asm!("swi #{}", 
+        const Syscalls::JoinThread as u32, in("r0") thread_id, in("r1") timeout.unwrap_or_default(), lateout("r0") child_thread_result)
+    }
+    return child_thread_result;
 }
 
 pub fn allocate(size: usize, align: usize) -> *mut u8 {

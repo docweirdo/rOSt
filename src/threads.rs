@@ -1,8 +1,8 @@
 use crate::system_timer;
 
 use super::processor;
-use alloc::vec::Vec;
 use alloc::{alloc::alloc, alloc::dealloc, boxed::Box};
+use alloc::{collections::btree_set::BTreeSet, vec::Vec};
 use core::{alloc::Layout, debug_assert, panic};
 use log::debug;
 
@@ -19,7 +19,9 @@ pub struct TCB {
     entry: Box<dyn FnMut() + 'static>,
     stack_current: *mut u8,
     stack_start: *mut u8,
-    pub(crate) wakeup_timestamp: usize,
+    pub(crate) parent_thread_id: usize,
+    pub(crate) wakeup_timestamp: Option<usize>,
+    pub(crate) joined_thread_ids: BTreeSet<usize>,
 }
 
 impl Drop for TCB {
@@ -73,9 +75,11 @@ where
 
     let id = create_thread_internal(Box::new(idle_thread));
     debug_assert!(id == IDLE_THREAD_ID);
+    debug_assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
 
     let id = create_thread_internal(Box::new(entry));
     debug_assert!(id == 1);
+    debug_assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
     unsafe {
         RUNNING_THREAD_ID = id;
         let thread = THREADS
@@ -98,10 +102,12 @@ pub fn print_threads() {
         crate::println!("threads:");
         for thread in &THREADS {
             crate::println!(
-                "  id: {} state: {:?} last_stack_size: {:#X}",
+                "  id: {} state: {:?} last_stack_size: {:#X} timestamp: {:?} joined_thread_ids: {:?}",
                 thread.id,
                 thread.state,
-                thread.stack_start.offset_from(thread.stack_current) as u32
+                thread.stack_start.offset_from(thread.stack_current) as u32,
+                thread.wakeup_timestamp,
+                thread.joined_thread_ids
             );
         }
     }
@@ -109,11 +115,15 @@ pub fn print_threads() {
 
 pub fn get_current_thread<'a>() -> &'a mut TCB {
     unsafe {
-        return THREADS
+        THREADS
             .iter_mut()
             .find(|t| t.id == RUNNING_THREAD_ID)
-            .unwrap();
+            .unwrap()
     }
+}
+
+pub fn get_thread_by_id<'a>(thread_id: usize) -> Option<&'a mut TCB> {
+    unsafe { THREADS.iter_mut().find(|t| t.id == thread_id) }
 }
 
 pub fn is_thread_done(id: usize) -> bool {
@@ -176,11 +186,13 @@ pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
 
         let mut tcb = TCB {
             id,
+            parent_thread_id: RUNNING_THREAD_ID,
             state: ThreadState::Ready,
             stack_current: stack_start,
             stack_start,
             entry,
-            wakeup_timestamp: 0,
+            wakeup_timestamp: None,
+            joined_thread_ids: BTreeSet::new(),
         };
 
         tcb.stack_current = tcb.stack_current.offset(15 * -4);
@@ -208,6 +220,18 @@ pub fn exit_internal() {
             .find(|t| t.id == RUNNING_THREAD_ID)
             .unwrap()
             .state = ThreadState::Stopped;
+
+        // mark all waiting (joined) threads as ready
+        for thread in &mut THREADS {
+            if thread.state != ThreadState::Waiting || thread.joined_thread_ids.is_empty() {
+                continue;
+            }
+            let present = thread.joined_thread_ids.remove(&RUNNING_THREAD_ID);
+            if present && thread.joined_thread_ids.is_empty() {
+                thread.state = ThreadState::Ready;
+                thread.wakeup_timestamp = None;
+            }
+        }
     }
     schedule(None);
 }
@@ -216,14 +240,17 @@ pub fn wakeup_elapsed_threads() {
     unsafe {
         let current_timestamp = system_timer::get_current_real_time() as usize;
         // find waiting thread with elapsed timestamp
-        let thread = THREADS
-            .iter_mut()
-            .find(|t| t.state == ThreadState::Waiting && t.wakeup_timestamp <= current_timestamp);
+        let thread = THREADS.iter_mut().find(|t| {
+            t.state == ThreadState::Waiting
+                && t.wakeup_timestamp.is_some()
+                && t.wakeup_timestamp.unwrap() <= current_timestamp
+        });
 
         // found waiting thread with elapsed timestamp -> schedule
         if let Some(thread) = thread {
             thread.state = ThreadState::Ready;
-            thread.wakeup_timestamp = 0;
+            thread.wakeup_timestamp = None;
+            thread.joined_thread_ids.clear();
             schedule(Some(thread.id));
         }
     }
@@ -284,9 +311,11 @@ pub fn schedule(next_thread_id: Option<usize>) {
                 }
                 // back at the thread we started our journey
                 if next_thread_pos == running_thread_pos {
-                    // no other thread ready and this thread is stopped
+                    // no other thread ready and this thread is stopped or waiting
                     // then switch to the idle thread
-                    if running_thread.state == ThreadState::Stopped {
+                    if running_thread.state == ThreadState::Stopped
+                        || running_thread.state == ThreadState::Waiting
+                    {
                         next_thread_pos = 0;
                         break;
                     } else {
@@ -298,7 +327,8 @@ pub fn schedule(next_thread_id: Option<usize>) {
         }
         let next_thread = &mut THREADS[next_thread_pos];
         debug_assert!(next_thread.state == ThreadState::Ready);
-        debug_assert!(next_thread.wakeup_timestamp == 0);
+        debug_assert!(next_thread.wakeup_timestamp == None);
+        debug_assert!(next_thread.joined_thread_ids.is_empty());
 
         next_thread.state = ThreadState::Running;
         // only switch back old thread to ready if not waiting or stopped

@@ -115,17 +115,29 @@ pub fn read_eval_print_loop() {
         threads::print_threads();
     });
     add_command("thread_test", || unsafe {
+        THREAD_TEST_COUNT = 0;
+        let mut thread_ids: Vec<usize> = Vec::new();
+
         for id in 0..10 {
-            rost_api::syscalls::create_thread(move || {
+            thread_ids.push(rost_api::syscalls::create_thread(move || {
                 THREAD_TEST_COUNT += 1;
-                println!("thread {} slept {}", id, rost_api::syscalls::sleep(50 * id));
+                println!("thread {} slept {}", id, rost_api::syscalls::sleep(id * 50));
                 THREAD_TEST_COUNT += 1;
-                println!("thread {} slept {}", id, rost_api::syscalls::sleep(50 * id));
+                println!(
+                    "thread {} slept {}",
+                    id,
+                    rost_api::syscalls::sleep(id * 100)
+                );
                 THREAD_TEST_COUNT += 1;
-                println!("thread end {} {}", id, THREAD_TEST_COUNT);
-            });
+            }));
         }
-        rost_api::syscalls::yield_thread();
+
+        for id in thread_ids {
+            rost_api::syscalls::join_thread(id, None);
+        }
+
+        assert!(THREAD_TEST_COUNT == 30);
+        println!("thread_test end {}", THREAD_TEST_COUNT);
     });
 
     unsafe {
