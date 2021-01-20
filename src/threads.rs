@@ -320,13 +320,7 @@ pub fn schedule(next_thread_id: Option<usize>) {
                 .offset_from(next_thread.stack_current) as u32
         );
 
-        asm!("mov r0, {old}
-          mov r1, {new}",
-          old = in(reg) &running_thread.stack_current,
-          new = in(reg) &next_thread.stack_current);
-
-        switch_thread();
-
+        switch_thread(&running_thread.stack_current, &next_thread.stack_current);
         SCHEDULER_INTERVAL_COUNTER = SCHEDULER_INTERVAL;
         processor::set_interrupts_enabled!(true);
     }
@@ -340,7 +334,7 @@ pub fn schedule(next_thread_id: Option<usize>) {
 /// and returns to the now different instruction pointed to by the
 /// Link Register.
 #[naked]
-unsafe extern "C" fn switch_thread() {
+unsafe extern "C" fn switch_thread(_running_thread: &*mut u8, _current_thread: &*mut u8) {
     asm!(
         "push {{r0-r12}}
          push {{r14}}
