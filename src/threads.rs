@@ -7,6 +7,7 @@ use core::{alloc::Layout, debug_assert, panic};
 use log::debug;
 
 const THREAD_STACK_SIZE: usize = 1024 * 8;
+const IDLE_THREAD_ID: usize = 0;
 /// The amount of SysTicks before the scheduler gets called.
 pub(crate) static SCHEDULER_INTERVAL: u32 = 5;
 pub(crate) static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
@@ -71,7 +72,7 @@ where
     }
 
     let id = create_thread_internal(Box::new(idle_thread));
-    debug_assert!(id == 0);
+    debug_assert!(id == IDLE_THREAD_ID);
 
     let id = create_thread_internal(Box::new(entry));
     debug_assert!(id == 1);
@@ -275,7 +276,9 @@ pub fn schedule(next_thread_id: Option<usize>) {
                     next_thread_pos = 1;
                     // but if we are already in the idle thread nothing else to do
                     if running_thread.id == 0 {
-                        debug_assert!(THREADS.len() == 1);
+                        debug_assert!(!THREADS
+                            .iter()
+                            .any(|t| t.id != IDLE_THREAD_ID && t.state == ThreadState::Ready));
                         return;
                     }
                 }
@@ -323,6 +326,7 @@ pub fn schedule(next_thread_id: Option<usize>) {
           new = in(reg) &next_thread.stack_current);
 
         switch_thread();
+
         SCHEDULER_INTERVAL_COUNTER = SCHEDULER_INTERVAL;
         processor::set_interrupts_enabled!(true);
     }
