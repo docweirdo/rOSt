@@ -88,12 +88,12 @@ where
         asm!("mov sp, {stack_address}
               mov pc, {start_address}",
               stack_address = in(reg) thread.stack_current,
-              start_address = in(reg) new_thread_entry as u32, options(noreturn));
+              start_address = in(reg) new_thread_entry, options(noreturn));
     }
 }
 
 /// prints information about current threads
-pub fn print_threads() -> () {
+pub fn print_threads() {
     unsafe {
         crate::println!("threads:");
         for thread in &THREADS {
@@ -124,7 +124,7 @@ pub fn is_thread_done(id: usize) -> bool {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
@@ -172,30 +172,30 @@ pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
             panic!("buffer is null");
         }
 
-        let stack_start = buffer.offset(THREAD_STACK_SIZE as isize);
+        let stack_start = buffer.add(THREAD_STACK_SIZE);
 
         let mut tcb = TCB {
-            id: id,
+            id,
             state: ThreadState::Ready,
             stack_current: stack_start,
-            stack_start: stack_start,
-            entry: entry,
+            stack_start,
+            entry,
             wakeup_timestamp: 0,
         };
 
         tcb.stack_current = tcb.stack_current.offset(15 * -4);
 
         core::ptr::write_volatile(
-            (tcb.stack_current.offset(0)) as *mut u32,
-            processor::ProcessorMode::System as u32,
+            (tcb.stack_current.offset(0)) as *mut usize,
+            processor::ProcessorMode::System as usize,
         );
         core::ptr::write_volatile(
-            (tcb.stack_current.offset(4)) as *mut u32,
-            new_thread_entry as u32,
+            (tcb.stack_current.offset(4)) as *mut usize,
+            new_thread_entry as usize,
         );
 
         THREADS.push(tcb);
-        return id;
+        id
     }
 }
 

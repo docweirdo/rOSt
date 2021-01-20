@@ -66,5 +66,5 @@ pub fn get_heap_size_left() -> usize {
 #[alloc_error_handler]
 fn alloc_error(_layout: Layout) -> ! {
     crate::println_with_stack!(32, "alloc: out of memory");
-    loop {}
+    panic!("alloc: out of memory");
 }

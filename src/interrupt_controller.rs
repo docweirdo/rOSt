@@ -1,7 +1,6 @@
 use crate::helpers::{read_register, write_register};
 use crate::processor;
 use crate::system_timer;
-use rost_macros;
 
 pub struct AIC;
 #[allow(dead_code)]
@@ -44,7 +43,7 @@ where
 
     let mut status: u32 = read_register(AIC::BASE_ADDRESS, AIC::IMR);
 
-    status = status | 0x2;
+    status |= 0x2;
 
     // enable system interrupt
     write_register(AIC::BASE_ADDRESS, AIC::IECR, status);
@@ -55,15 +54,14 @@ where
 /// the address of the handler. The exception macro wraps the handler for correct exception handling.
 #[rost_macros::exception]
 unsafe fn Interrupt() {
-    if system_timer::get_periodic_interrupts_enabled() && system_timer::has_system_timer_elapsed() {
-        if SYS_TIMER_INTERRUPT_HANDLER.is_some() {
-            SYS_TIMER_INTERRUPT_HANDLER.as_mut().unwrap()();
-        }
+    if system_timer::get_periodic_interrupts_enabled()
+        && system_timer::has_system_timer_elapsed()
+        && SYS_TIMER_INTERRUPT_HANDLER.is_some()
+    {
+        SYS_TIMER_INTERRUPT_HANDLER.as_mut().unwrap()();
     }
-    if super::dbgu::is_char_available() {
-        if DBGU_INTERRUPT_HANDLER.is_some() {
-            DBGU_INTERRUPT_HANDLER.as_mut().unwrap()();
-        }
+    if super::dbgu::is_char_available() && DBGU_INTERRUPT_HANDLER.is_some() {
+        DBGU_INTERRUPT_HANDLER.as_mut().unwrap()();
     }
 }
 

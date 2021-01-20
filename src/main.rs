@@ -23,7 +23,10 @@ mod system_timer;
 mod threads;
 mod user_tasks;
 
-/// Sets stack pointers and calls boot function
+/// Initial OS entry point: Sets stack pointers and calls boot function
+/// # Safety
+///
+/// This function should not be called before the horsemen are ready.
 #[no_mangle]
 #[naked]
 pub unsafe extern "C" fn _start() -> ! {
@@ -135,7 +138,7 @@ pub fn boot() {
                 if threads::SCHEDULER_INTERVAL_COUNTER == 0 {
                     threads::schedule(None);
                 } else {
-                    threads::SCHEDULER_INTERVAL_COUNTER = threads::SCHEDULER_INTERVAL_COUNTER - 1;
+                    threads::SCHEDULER_INTERVAL_COUNTER -= 1;
                 }
             }
         },

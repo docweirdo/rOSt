@@ -43,48 +43,47 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
         Ok(Syscalls::YieldThread) => {
             trace!("syscall: YieldThread");
             super::threads::schedule(None);
-            return 0;
+            0
         }
         Ok(Syscalls::CreateThread) => {
             trace!("syscall: CreateThread");
             let raw_entry: *mut dyn FnMut() = core::mem::transmute((arg0, arg1));
             let entry = Box::<dyn FnMut() + 'static>::from_raw(raw_entry);
-            let id = super::threads::create_thread_internal(entry);
-            return id;
+            super::threads::create_thread_internal(entry)
         }
         Ok(Syscalls::ExitThread) => {
             trace!("syscall: ExitThread");
             super::threads::exit_internal();
-            return 0;
+            0
         }
         Ok(Syscalls::ReceiveDBGU) => {
             trace!("syscall: ReceiveDBGU");
             if let Some(ch) = crate::dbgu::DBGU_BUFFER.pop() {
                 return ch as usize;
             }
-            return 0xFFFF;
+            0xFFFF
         }
         Ok(Syscalls::SendDBGU) => {
             trace!("syscall: SendDBGU");
             super::dbgu::write_char(arg0 as u8 as char);
-            return 0;
+            0
         }
         Ok(Syscalls::Allocate) => {
             trace!("syscall: Allocate");
             let layout = Layout::from_size_align(arg0 as usize, arg1 as usize).expect("Bad layout");
 
-            return alloc::alloc::alloc(layout) as usize;
+            alloc::alloc::alloc(layout) as usize
         }
         Ok(Syscalls::Deallocate) => {
             trace!("syscall: Deallocate");
             let layout = Layout::from_size_align(arg1 as usize, arg2 as usize).expect("Bad layout");
 
             alloc::alloc::dealloc(arg0 as *mut u8, layout);
-            return 0;
+            0
         }
         Ok(Syscalls::GetCurrentRealTime) => {
             trace!("syscall: GetCurrentRealTime");
-            return system_timer::get_current_real_time() as usize;
+            system_timer::get_current_real_time() as usize
         }
         Ok(Syscalls::Sleep) => {
             trace!("syscall: Sleep");
@@ -96,7 +95,7 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
 
             threads::schedule(None);
 
-            return system_timer::get_current_real_time() as usize - current_time as usize;
+            system_timer::get_current_real_time() as usize - current_time as usize
         }
         _ => {
             error!("unknown syscall id {}", service_id);

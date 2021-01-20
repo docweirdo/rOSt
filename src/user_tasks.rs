@@ -53,10 +53,10 @@ static mut COMMANDS: Vec<Command> = Vec::new();
 
 impl Command {
     fn new<F: FnMut() + 'static>(name: &str, handler: F) -> Self {
-        return Command {
+        Command {
             name: name.to_owned(),
             handler: Box::new(handler),
-        };
+        }
     }
 }
 

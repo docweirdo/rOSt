@@ -95,7 +95,7 @@ pub fn set_dbgu_recv_interrupt(value: bool) {
 
 /// Checks if the DBGU receive holding register holds a character
 pub fn is_char_available() -> bool {
-    return helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::RXRDY) != 0;
+    helpers::read_register_bit(DBGU::BASE_ADDRESS, DBGU::SR, DBGU::RXRDY) != 0
 }
 
 /// Returns a character from the DBGU Receive Holding Register or None if not available
