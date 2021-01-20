@@ -321,6 +321,9 @@ pub fn schedule(next_thread_id: Option<usize>) {
         );
 
         switch_thread(&running_thread.stack_current, &next_thread.stack_current);
+
+        // always reset scheduler interval counter to prevent immediate rescheduling
+        // maybe called from wakeup or other places
         SCHEDULER_INTERVAL_COUNTER = SCHEDULER_INTERVAL;
         processor::set_interrupts_enabled!(true);
     }

@@ -2,7 +2,6 @@
 #![no_main]
 #![feature(alloc_error_handler)]
 #![feature(naked_functions)]
-#![feature(drain_filter)]
 #![feature(asm)]
 
 extern crate alloc;
