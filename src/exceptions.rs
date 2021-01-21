@@ -129,7 +129,7 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
                 != None
             {
                 panic!(
-                    "syscall Unsubscribe: Service {:?} already subscribed",
+                    "syscall Subscribe: Service {:?} already subscribed",
                     service
                 );
             }

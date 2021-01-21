@@ -89,6 +89,48 @@ pub fn read_eval_print_loop() {
         }
         TASK4_ACTIVE = false;
     });
+    add_command("task5", || {
+        /// wait for x realtime clock units
+        fn busy_wait(units: usize) {
+            let last = rost_api::syscalls::get_current_realtime();
+            loop {
+                if rost_api::syscalls::get_current_realtime() - last >= units {
+                    break;
+                }
+            }
+        }
+        fn run_thread(last_char: char) {
+            rost_api::syscalls::create_thread(move || {
+                if last_char.is_uppercase() {
+                    for _ in 0..11 {
+                        print!("{}", last_char);
+                        //let last = rost_api::syscalls::get_current_realtime();
+                        busy_wait(100);
+                        //print!("{} ", rost_api::syscalls::get_current_realtime() - last);
+                    }
+                } else {
+                    for _ in 0..11 {
+                        print!("{}", last_char);
+                        rost_api::syscalls::sleep(100);
+                    }
+                }
+            });
+        }
+
+        run_thread('A');
+        run_thread('B');
+        run_thread('c');
+
+        rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
+        loop {
+            let last_char = rost_api::syscalls::receive_character_from_dbgu() as char;
+            if last_char == 'q' {
+                break;
+            }
+
+            run_thread(last_char);
+        }
+    });
     add_command("uptime", || {
         println!("{}", system_timer::get_current_real_time());
     });
@@ -172,6 +214,8 @@ pub fn read_eval_print_loop() {
         RNG = Some(Pcg64::seed_from_u64(0xDEADBEEF));
     }
 
+    rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
+
     loop {
         let mut char_buf = alloc::string::String::new();
 
@@ -186,8 +230,6 @@ pub fn read_eval_print_loop() {
         print!("\n$ ");
 
         let mut found_autocomplete_commands: Vec<&str> = Vec::new();
-
-        rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
 
         loop {
             let last_char: char = rost_api::syscalls::receive_character_from_dbgu() as char;
