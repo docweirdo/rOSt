@@ -41,6 +41,7 @@ pub fn task4_dbgu(last_char: char) {
 const KEY_ENTER: char = 0xD as char;
 const KEY_BACKSPACE: char = 0x8 as char;
 const KEY_DELETE: char = 0x7F as char;
+const KEY_TAB: char = 0x9 as char;
 
 static mut THREAD_TEST_COUNT: usize = 0;
 
@@ -95,16 +96,16 @@ pub fn read_eval_print_loop() {
     add_command("uptime", || {
         println!("{}", system_timer::get_current_real_time());
     });
-    add_command("custom", || {
+    add_command("custom_code", || {
         rost_api::syscalls::create_thread(crate::custom_user_code_thread);
     });
-    add_command("swi", || unsafe {
+    add_command("software_interrupt", || unsafe {
         asm!("swi #99");
     });
-    add_command("undi", || unsafe {
+    add_command("undefined_instruction", || unsafe {
         asm!(".word 0xf7f0a000");
     });
-    add_command("undi", || unsafe {
+    add_command("data_abort", || unsafe {
         asm!(
             "
          ldr r0, =0x90000000
@@ -148,13 +149,16 @@ pub fn read_eval_print_loop() {
         let mut char_buf = alloc::string::String::new();
 
         println!("\nwaiting for input... (press ENTER to echo)");
-        print!("available commands:\n  ");
+        print!("available commands (autocomplete enabled):\n  ");
         unsafe {
+            COMMANDS.sort_by(|a, b| a.name.cmp(&b.name));
             for cmd in &COMMANDS {
                 print!("{} ", cmd.name);
             }
         }
         print!("\n$ ");
+
+        let mut found_autocomplete_commands: Vec<&str> = Vec::new();
 
         loop {
             if let Some(last_char) = rost_api::syscalls::receive_character_from_dbgu() {
@@ -164,9 +168,52 @@ pub fn read_eval_print_loop() {
                     break;
                 }
                 if last_char == KEY_DELETE || last_char == KEY_BACKSPACE {
-                    char_buf.pop();
-                    print!("\x08 \x08");
+                    if char_buf.pop().is_some() {
+                        print!("{0} {0}", KEY_BACKSPACE);
+                    }
+                    found_autocomplete_commands.clear();
+                } else if last_char == KEY_TAB {
+                    unsafe {
+                        if found_autocomplete_commands.len() == 0 {
+                            found_autocomplete_commands = COMMANDS
+                                .iter()
+                                .filter_map(|c| {
+                                    if c.name.starts_with(&char_buf) {
+                                        Some(c.name.as_str())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                        }
+                        if found_autocomplete_commands.len() > 0 {
+                            let pos = {
+                                if let Some(pos) = found_autocomplete_commands
+                                    .iter()
+                                    .position(|name| name == &char_buf)
+                                {
+                                    if found_autocomplete_commands.len() == pos + 1 {
+                                        0
+                                    } else {
+                                        pos + 1
+                                    }
+                                } else {
+                                    0
+                                }
+                            };
+                            let mut replace_displayed_text = |w| {
+                                for _ in 0..char_buf.len() {
+                                    print!("{0} {0}", KEY_BACKSPACE);
+                                }
+                                char_buf.clear();
+                                char_buf.push_str(w);
+                                print!("{}", char_buf);
+                            };
+                            replace_displayed_text(&found_autocomplete_commands[pos]);
+                        }
+                    }
                 } else {
+                    found_autocomplete_commands.clear();
                     char_buf.push(last_char);
                     print!("{}", last_char);
                 }
