@@ -2,26 +2,29 @@ use crate::system_timer;
 
 use super::processor;
 use alloc::{alloc::alloc, alloc::dealloc, boxed::Box};
-use alloc::{collections::btree_set::BTreeSet, vec::Vec};
+use alloc::{
+    collections::btree_map::BTreeMap, collections::btree_set::BTreeSet,
+    collections::vec_deque::VecDeque, vec::Vec,
+};
 use core::{alloc::Layout, debug_assert, panic};
-use log::debug;
+use log::trace;
 
 const THREAD_STACK_SIZE: usize = 1024 * 8;
-const IDLE_THREAD_ID: usize = 0;
+const IDLE_THREAD_ID: ThreadId = 0;
 /// The amount of SysTicks before the scheduler gets called.
 pub(crate) static SCHEDULER_INTERVAL: u32 = 5;
 pub(crate) static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
 
 #[repr(C, align(4))]
 pub struct TCB {
-    pub id: usize,
+    pub id: ThreadId,
     pub(crate) state: ThreadState,
     entry: Box<dyn FnMut() + 'static>,
     stack_current: *mut u8,
     stack_start: *mut u8,
-    pub(crate) parent_thread_id: usize,
-    pub(crate) wakeup_timestamp: Option<usize>,
-    pub(crate) joined_thread_ids: BTreeSet<usize>,
+    pub(crate) parent_thread_id: ThreadId,
+    pub(crate) subscribed_services:
+        BTreeMap<rost_api::syscalls::ThreadServices, VecDeque<ThreadMessage>>,
 }
 
 impl Drop for TCB {
@@ -38,14 +41,29 @@ impl Drop for TCB {
 }
 
 pub static mut THREADS: Vec<TCB> = Vec::<TCB>::new();
-static mut RUNNING_THREAD_ID: usize = 0;
-static mut LAST_THREAD_ID: usize = 0;
+static mut RUNNING_THREAD_ID: ThreadId = 0;
+static mut LAST_THREAD_ID: ThreadId = 0;
+
+type TimeoutValue = usize;
+type ThreadId = usize;
+
+#[derive(PartialEq, Eq, Debug)]
+pub(crate) enum ThreadMessage {
+    DBGU(char),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub(crate) enum WaitingReason {
+    DBGU,
+    Sleep(TimeoutValue),
+    Join(BTreeSet<ThreadId>, Option<TimeoutValue>),
+}
 
 #[derive(PartialEq, Eq, Debug)]
 pub(crate) enum ThreadState {
     Ready,
     Running,
-    Waiting,
+    Waiting(WaitingReason),
     Stopped,
 }
 
@@ -61,7 +79,7 @@ where
     }
 
     fn idle_thread() {
-        crate::println!("idle thread");
+        trace!("executing idle thread");
         loop {
             unsafe {
                 // wait for interrupt low power mode
@@ -102,12 +120,10 @@ pub fn print_threads() {
         crate::println!("threads:");
         for thread in &THREADS {
             crate::println!(
-                "  id: {} state: {:?} last_stack_size: {:#X} timestamp: {:?} joined_thread_ids: {:?}",
+                "  id: {} state: {:?} last_stack_size: {:#X}",
                 thread.id,
                 thread.state,
                 thread.stack_start.offset_from(thread.stack_current) as u32,
-                thread.wakeup_timestamp,
-                thread.joined_thread_ids
             );
         }
     }
@@ -191,8 +207,7 @@ pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
             stack_current: stack_start,
             stack_start,
             entry,
-            wakeup_timestamp: None,
-            joined_thread_ids: BTreeSet::new(),
+            subscribed_services: BTreeMap::new(),
         };
 
         tcb.stack_current = tcb.stack_current.offset(15 * -4);
@@ -223,13 +238,13 @@ pub fn exit_internal() {
 
         // mark all waiting (joined) threads as ready
         for thread in &mut THREADS {
-            if thread.state != ThreadState::Waiting || thread.joined_thread_ids.is_empty() {
-                continue;
-            }
-            let present = thread.joined_thread_ids.remove(&RUNNING_THREAD_ID);
-            if present && thread.joined_thread_ids.is_empty() {
-                thread.state = ThreadState::Ready;
-                thread.wakeup_timestamp = None;
+            if let ThreadState::Waiting(WaitingReason::Join(joined_thread_ids, _)) =
+                &mut thread.state
+            {
+                let present = joined_thread_ids.remove(&RUNNING_THREAD_ID);
+                if present && joined_thread_ids.is_empty() {
+                    thread.state = ThreadState::Ready;
+                }
             }
         }
     }
@@ -241,17 +256,37 @@ pub fn wakeup_elapsed_threads() {
         let current_timestamp = system_timer::get_current_real_time() as usize;
         // find waiting thread with elapsed timestamp
         let thread = THREADS.iter_mut().find(|t| {
-            t.state == ThreadState::Waiting
-                && t.wakeup_timestamp.is_some()
-                && t.wakeup_timestamp.unwrap() <= current_timestamp
+            if let ThreadState::Waiting(WaitingReason::Sleep(wakeup_timestamp)) = t.state {
+                if wakeup_timestamp <= current_timestamp {
+                    return true;
+                }
+            }
+            false
         });
 
         // found waiting thread with elapsed timestamp -> schedule
         if let Some(thread) = thread {
             thread.state = ThreadState::Ready;
-            thread.wakeup_timestamp = None;
-            thread.joined_thread_ids.clear();
             schedule(Some(thread.id));
+        }
+    }
+}
+
+pub fn handle_dbgu_new_character_event(character: char) {
+    unsafe {
+        for thread in &mut THREADS {
+            if let Some(messages) = thread
+                .subscribed_services
+                .get_mut(&rost_api::syscalls::ThreadServices::DBGU)
+            {
+                messages.push_back(ThreadMessage::DBGU(character));
+            }
+            if let ThreadState::Waiting(WaitingReason::DBGU) = thread.state {
+                debug_assert!(thread
+                    .subscribed_services
+                    .contains_key(&rost_api::syscalls::ThreadServices::DBGU));
+                thread.state = ThreadState::Ready;
+            }
         }
     }
 }
@@ -313,22 +348,21 @@ pub fn schedule(next_thread_id: Option<usize>) {
                 if next_thread_pos == running_thread_pos {
                     // no other thread ready and this thread is stopped or waiting
                     // then switch to the idle thread
-                    if running_thread.state == ThreadState::Stopped
-                        || running_thread.state == ThreadState::Waiting
-                    {
-                        next_thread_pos = 0;
-                        break;
-                    } else {
-                        // else stay in the same thread
-                        return;
+                    match running_thread.state {
+                        ThreadState::Waiting(_) | ThreadState::Stopped => {
+                            next_thread_pos = 0;
+                            break;
+                        }
+                        _ => {
+                            // else stay in the same thread
+                            return;
+                        }
                     }
                 }
             }
         }
         let next_thread = &mut THREADS[next_thread_pos];
         debug_assert!(next_thread.state == ThreadState::Ready);
-        debug_assert!(next_thread.wakeup_timestamp == None);
-        debug_assert!(next_thread.joined_thread_ids.is_empty());
 
         next_thread.state = ThreadState::Running;
         // only switch back old thread to ready if not waiting or stopped
@@ -337,7 +371,7 @@ pub fn schedule(next_thread_id: Option<usize>) {
         }
         RUNNING_THREAD_ID = next_thread.id;
 
-        debug!(
+        trace!(
             "t#: {} switch thread from {} sp:{:#X} to {} sp:{:#X}",
             THREADS.len(),
             running_thread.id,

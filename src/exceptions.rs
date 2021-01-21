@@ -4,6 +4,7 @@ use alloc::boxed::Box;
 use core::{alloc::Layout, convert::TryFrom};
 use log::{error, trace};
 use processor::ProcessorMode;
+use rost_api::syscalls;
 use rost_api::syscalls::Syscalls;
 use threads::ThreadState;
 
@@ -59,10 +60,41 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
         }
         Ok(Syscalls::ReceiveDBGU) => {
             trace!("syscall: ReceiveDBGU");
-            if let Some(ch) = crate::dbgu::DBGU_BUFFER.pop() {
-                return ch as usize;
+            let current_tcb = threads::get_current_thread();
+            match current_tcb
+                .subscribed_services
+                .get_mut(&syscalls::ThreadServices::DBGU)
+            {
+                Some(messages) => {
+                    if let Some(threads::ThreadMessage::DBGU(character)) = messages.pop_front() {
+                        return character as usize;
+                    }
+                }
+                _ => {
+                    panic!(
+                        "syscall DBGU: Service {:?} not subscribed",
+                        syscalls::ThreadServices::DBGU
+                    );
+                }
             }
-            0xFFFF
+
+            if arg0 != 0 {
+                current_tcb.state = threads::ThreadState::Waiting(threads::WaitingReason::DBGU);
+                threads::schedule(None);
+
+                let current_tcb = threads::get_current_thread();
+                if let Some(messages) = current_tcb
+                    .subscribed_services
+                    .get_mut(&syscalls::ThreadServices::DBGU)
+                {
+                    if let Some(threads::ThreadMessage::DBGU(character)) = messages.pop_front() {
+                        return character as usize;
+                    }
+                }
+                panic!("should always be a character saved from the interrupt");
+            } else {
+                0xFFFF
+            }
         }
         Ok(Syscalls::SendDBGU) => {
             trace!("syscall: SendDBGU");
@@ -86,13 +118,44 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
             trace!("syscall: GetCurrentRealTime");
             system_timer::get_current_real_time() as usize
         }
+        Ok(Syscalls::Subscribe) => {
+            trace!("syscall: Subscribe");
+            let current_tcb = threads::get_current_thread();
+            let service = syscalls::ThreadServices::try_from(arg0).expect("invalid service given");
+
+            if current_tcb
+                .subscribed_services
+                .insert(service, alloc::collections::VecDeque::new())
+                != None
+            {
+                panic!(
+                    "syscall Unsubscribe: Service {:?} already subscribed",
+                    service
+                );
+            }
+            0
+        }
+        Ok(Syscalls::Unsubscribe) => {
+            trace!("syscall: Unsubscribe");
+            let current_tcb = threads::get_current_thread();
+            let service = syscalls::ThreadServices::try_from(arg0).expect("invalid service given");
+
+            if current_tcb.subscribed_services.remove(&service) == None {
+                panic!(
+                    "syscall Unsubscribe: Service {:?} was not subscribed",
+                    service
+                );
+            }
+            0
+        }
         Ok(Syscalls::Sleep) => {
             trace!("syscall: Sleep");
             let current_time = system_timer::get_current_real_time() as usize;
             let current_tcb = threads::get_current_thread();
 
-            current_tcb.wakeup_timestamp = Some(current_time + arg0 as usize);
-            current_tcb.state = threads::ThreadState::Waiting;
+            current_tcb.state = threads::ThreadState::Waiting(threads::WaitingReason::Sleep(
+                current_time + arg0 as usize,
+            ));
 
             threads::schedule(None);
 
@@ -118,12 +181,28 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
                 panic!("JoinThread: you cannot join a thread which is not your parent thread");
             }
 
-            current_tcb.joined_thread_ids.insert(arg0 as usize);
-            if arg1 > 0 {
-                let current_time = system_timer::get_current_real_time() as usize;
-                current_tcb.wakeup_timestamp = Some(current_time + arg1 as usize);
+            if let threads::ThreadState::Waiting(threads::WaitingReason::Join(
+                joined_thread_ids,
+                _,
+            )) = &mut current_tcb.state
+            {
+                joined_thread_ids.insert(arg0 as usize);
+            } else {
+                let timeout = {
+                    if arg1 > 0 {
+                        let current_time = system_timer::get_current_real_time() as usize;
+                        Some(current_time + arg1 as usize)
+                    } else {
+                        None
+                    }
+                };
+                let mut joined_thread_ids = alloc::collections::btree_set::BTreeSet::new();
+                joined_thread_ids.insert(arg0 as usize);
+                current_tcb.state = threads::ThreadState::Waiting(threads::WaitingReason::Join(
+                    joined_thread_ids,
+                    timeout,
+                ));
             }
-            current_tcb.state = threads::ThreadState::Waiting;
 
             threads::schedule(None);
             0

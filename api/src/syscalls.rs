@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use num_enum::IntoPrimitive;
 use num_enum::TryFromPrimitive;
 
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
@@ -12,17 +13,36 @@ pub enum Syscalls {
     ExitThread = 31,
     YieldThread = 32,
     JoinThread = 33,
+    Subscribe = 34,
+    Unsubscribe = 35,
     GetCurrentRealTime = 40,
     Sleep = 41,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, TryFromPrimitive, IntoPrimitive, Ord, PartialOrd)]
+#[repr(u32)]
+pub enum ThreadServices {
+    DBGU = 10,
+}
+
+pub fn subscribe(service: ThreadServices) {
+    unsafe {
+        asm!("swi #{}", const Syscalls::Subscribe as u32, in("r0") service as u32);
+    }
+}
+
+pub fn unsubscribe(service: ThreadServices) {
+    unsafe {
+        asm!("swi #{}", const Syscalls::Unsubscribe as u32, in("r0") service as u32);
+    }
 }
 
 pub fn get_current_realtime() -> usize {
     let time: usize;
     unsafe {
-        asm!("swi #{}
-              mov {}, r0", const Syscalls::GetCurrentRealTime as u32, out(reg) time);
+        asm!("swi #{}", const Syscalls::GetCurrentRealTime as u32, lateout("r0") time);
     }
-    return time;
+    time
 }
 
 pub fn sleep(time: usize) -> usize {
@@ -31,7 +51,7 @@ pub fn sleep(time: usize) -> usize {
         asm!("swi #{}", 
         const Syscalls::Sleep as u32, in("r0") time, lateout("r0") actual_sleep)
     }
-    return actual_sleep;
+    actual_sleep
 }
 
 pub fn join_thread(thread_id: usize, timeout: Option<usize>) -> usize {
@@ -40,7 +60,7 @@ pub fn join_thread(thread_id: usize, timeout: Option<usize>) -> usize {
         asm!("swi #{}", 
         const Syscalls::JoinThread as u32, in("r0") thread_id, in("r1") timeout.unwrap_or_default(), lateout("r0") child_thread_result)
     }
-    return child_thread_result;
+    child_thread_result
 }
 
 pub fn allocate(size: usize, align: usize) -> *mut u8 {
@@ -51,7 +71,7 @@ pub fn allocate(size: usize, align: usize) -> *mut u8 {
               mov {}, r0
             ", const Syscalls::Allocate as u32, out(reg) out_ptr, in("r0") size, in("r1") align,);
     }
-    return out_ptr as *mut u8;
+    out_ptr as *mut u8
 }
 
 pub fn deallocate(ptr: *mut u8, size: usize, align: usize) {
@@ -76,16 +96,23 @@ pub fn send_character_to_dbgu(character: u8) {
     }
 }
 
-pub fn receive_character_from_dbgu() -> Option<u8> {
+pub fn receive_character_from_dbgu() -> u8 {
     let out_char: u32;
     unsafe {
-        asm!("swi #{}
-              mov {}, r0", const Syscalls::ReceiveDBGU as u32, out(reg) out_char);
+        asm!("swi #{}", const Syscalls::ReceiveDBGU as u32, lateout("r0") out_char, in("r0") 1);
+    }
+    out_char as u8
+}
+
+pub fn receive_character_from_dbgu_noblock() -> Option<u8> {
+    let out_char: u32;
+    unsafe {
+        asm!("swi #{}", const Syscalls::ReceiveDBGU as u32, lateout("r0") out_char, in("r0") 0);
     }
     if out_char == 0xFFFF {
         return None;
     }
-    return Some(out_char as u8);
+    Some(out_char as u8)
 }
 
 /// System call to create a thread via software interrupt.
@@ -100,7 +127,7 @@ pub extern "C" fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
               swi #30
               mov {2}, r0", in(reg) entry_raw.0, in(reg) entry_raw.1, out(reg) id);
     }
-    return id;
+    id
 }
 
 /// System call to stop and exit the current thread via software interrupt.

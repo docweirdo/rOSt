@@ -3,6 +3,7 @@
 #![feature(alloc_error_handler)]
 #![feature(naked_functions)]
 #![feature(asm)]
+#![feature(destructuring_assignment)]
 
 extern crate alloc;
 
@@ -146,13 +147,16 @@ pub fn boot() {
 
             // dbgu_interrupt_handler,fires when rxready is set
             // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator
-            let last_char =
-                dbgu::read_char().expect("there should be char availabe in interrupt") as u8;
+            let last_char = dbgu::read_char()
+                .expect("there should be a char available in dbgu interrupt")
+                as u8;
 
-            dbgu::DBGU_BUFFER.push(last_char as char);
+            threads::handle_dbgu_new_character_event(last_char as char);
 
             // TODO: do not forget to remove
-            user_tasks::task4_dbgu(last_char as char);
+            if user_tasks::TASK4_ACTIVE {
+                user_tasks::task4_dbgu(last_char as char);
+            }
 
             interrupt_controller::mark_end_of_interrupt!();
         },

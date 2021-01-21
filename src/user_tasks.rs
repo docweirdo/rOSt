@@ -82,13 +82,9 @@ pub fn read_eval_print_loop() {
     add_command("task4", || unsafe {
         TASK4_ACTIVE = true;
         loop {
-            // check for a new char in the dbgu buffer
-            if let Some(last_char) = rost_api::syscalls::receive_character_from_dbgu() {
-                let last_char: char = last_char as char;
-                // quit on q
-                if last_char == 'q' {
-                    break;
-                }
+            let last_char = rost_api::syscalls::receive_character_from_dbgu() as char;
+            if last_char == 'q' {
+                break;
             }
         }
         TASK4_ACTIVE = false;
@@ -124,6 +120,9 @@ pub fn read_eval_print_loop() {
                 THREAD_TEST_COUNT += 1;
                 println!("thread {} slept {}", id, rost_api::syscalls::sleep(id * 50));
                 THREAD_TEST_COUNT += 1;
+                if THREAD_TEST_COUNT == 15 {
+                    threads::print_threads();
+                }
                 println!(
                     "thread {} slept {}",
                     id,
@@ -139,6 +138,34 @@ pub fn read_eval_print_loop() {
 
         assert!(THREAD_TEST_COUNT == 30);
         println!("thread_test end {}", THREAD_TEST_COUNT);
+    });
+
+    add_command("dbgu_test", || {
+        println!("dbgu_test: start");
+        let mut thread_ids: Vec<usize> = Vec::new();
+
+        for id in 0..3 {
+            thread_ids.push(rost_api::syscalls::create_thread(move || {
+                rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
+                println!(
+                    "dbgu_test: thread {} got {}",
+                    id,
+                    rost_api::syscalls::receive_character_from_dbgu() as char
+                );
+                rost_api::syscalls::sleep(50);
+                println!(
+                    "dbgu_test: thread {} got {}",
+                    id,
+                    rost_api::syscalls::receive_character_from_dbgu() as char
+                );
+            }));
+        }
+
+        for id in thread_ids {
+            rost_api::syscalls::join_thread(id, None);
+        }
+
+        println!("dbgu_test: the end");
     });
 
     unsafe {
@@ -160,63 +187,65 @@ pub fn read_eval_print_loop() {
 
         let mut found_autocomplete_commands: Vec<&str> = Vec::new();
 
+        rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
+
         loop {
-            if let Some(last_char) = rost_api::syscalls::receive_character_from_dbgu() {
-                let last_char: char = last_char as char;
-                if last_char == KEY_ENTER {
-                    println!();
-                    break;
+            let last_char: char = rost_api::syscalls::receive_character_from_dbgu() as char;
+
+            if last_char == KEY_ENTER {
+                println!();
+                rost_api::syscalls::unsubscribe(rost_api::syscalls::ThreadServices::DBGU);
+                break;
+            }
+            if last_char == KEY_DELETE || last_char == KEY_BACKSPACE {
+                if char_buf.pop().is_some() {
+                    print!("{0} {0}", KEY_BACKSPACE);
                 }
-                if last_char == KEY_DELETE || last_char == KEY_BACKSPACE {
-                    if char_buf.pop().is_some() {
-                        print!("{0} {0}", KEY_BACKSPACE);
-                    }
-                    found_autocomplete_commands.clear();
-                } else if last_char == KEY_TAB {
-                    unsafe {
-                        if found_autocomplete_commands.len() == 0 {
-                            found_autocomplete_commands = COMMANDS
-                                .iter()
-                                .filter_map(|c| {
-                                    if c.name.starts_with(&char_buf) {
-                                        Some(c.name.as_str())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                        }
-                        if found_autocomplete_commands.len() > 0 {
-                            let pos = {
-                                if let Some(pos) = found_autocomplete_commands
-                                    .iter()
-                                    .position(|name| name == &char_buf)
-                                {
-                                    if found_autocomplete_commands.len() == pos + 1 {
-                                        0
-                                    } else {
-                                        pos + 1
-                                    }
+                found_autocomplete_commands.clear();
+            } else if last_char == KEY_TAB {
+                unsafe {
+                    if found_autocomplete_commands.is_empty() {
+                        found_autocomplete_commands = COMMANDS
+                            .iter()
+                            .filter_map(|c| {
+                                if c.name.starts_with(&char_buf) {
+                                    Some(c.name.as_str())
                                 } else {
-                                    0
+                                    None
                                 }
-                            };
-                            let mut replace_displayed_text = |w| {
-                                for _ in 0..char_buf.len() {
-                                    print!("{0} {0}", KEY_BACKSPACE);
-                                }
-                                char_buf.clear();
-                                char_buf.push_str(w);
-                                print!("{}", char_buf);
-                            };
-                            replace_displayed_text(&found_autocomplete_commands[pos]);
-                        }
+                            })
+                            .collect();
                     }
-                } else {
-                    found_autocomplete_commands.clear();
-                    char_buf.push(last_char);
-                    print!("{}", last_char);
+                    if !found_autocomplete_commands.is_empty() {
+                        let pos = {
+                            if let Some(pos) = found_autocomplete_commands
+                                .iter()
+                                .position(|name| name == &char_buf)
+                            {
+                                if found_autocomplete_commands.len() == pos + 1 {
+                                    0
+                                } else {
+                                    pos + 1
+                                }
+                            } else {
+                                0
+                            }
+                        };
+                        let mut replace_displayed_text = |w| {
+                            for _ in 0..char_buf.len() {
+                                print!("{0} {0}", KEY_BACKSPACE);
+                            }
+                            char_buf.clear();
+                            char_buf.push_str(w);
+                            print!("{}", char_buf);
+                        };
+                        replace_displayed_text(&found_autocomplete_commands[pos]);
+                    }
                 }
+            } else {
+                found_autocomplete_commands.clear();
+                char_buf.push(last_char);
+                print!("{}", last_char);
             }
         }
 
