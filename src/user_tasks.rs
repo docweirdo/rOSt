@@ -31,9 +31,13 @@ pub fn task4_dbgu(last_char: char) {
             // print 3 times and wait between
             print_character_random(last_char, 5, 30);
             rost_api::syscalls::sleep(1000);
-            print_character_random(last_char, 5, 30);
+            if unsafe { TASK4_ACTIVE } {
+                print_character_random(last_char, 5, 30);
+            }
             rost_api::syscalls::sleep(1000);
-            print_character_random(last_char, 5, 30);
+            if unsafe { TASK4_ACTIVE } {
+                print_character_random(last_char, 5, 30);
+            }
         });
     }
 }
@@ -215,9 +219,9 @@ pub fn read_eval_print_loop() {
         RNG = Some(Pcg64::seed_from_u64(0xDEADBEEF));
     }
 
-    rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
-
     loop {
+        rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
+
         let mut char_buf = alloc::string::String::new();
 
         println!("\nwaiting for input... (press ENTER to echo)");
@@ -301,7 +305,8 @@ pub fn read_eval_print_loop() {
         unsafe {
             if let Some(cmd) = COMMANDS.iter_mut().find(|c| c.name == char_buf.as_str()) {
                 //println!("Executing command: {}", cmd.name);
-                (cmd.handler)();
+                let id = rost_api::syscalls::create_thread(move || (cmd.handler)());
+                rost_api::syscalls::join_thread(id, None);
             } else {
                 // builtin commands
                 match char_buf.as_str() {
