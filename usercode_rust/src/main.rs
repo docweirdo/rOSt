@@ -27,16 +27,6 @@ macro_rules! println {
     }
 }
 
-/// wait for x realtime clock units
-fn wait(units: usize) {
-    let last = rost_api::syscalls::get_current_realtime();
-    loop {
-        if rost_api::syscalls::get_current_realtime() - last > units {
-            break;
-        }
-    }
-}
-
 /// prints a character for a random range between min and max
 fn print_character_random<T>(c: T, min: usize, max: usize)
 where
@@ -50,23 +40,21 @@ where
 }
 
 fn task3() {
+    rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
     loop {
         // check for a new char in the dbgu buffer
-        if let Some(last_char) = rost_api::syscalls::receive_character_from_dbgu() {
-            let last_char: char = last_char as char;
-            // quit on q
-            if last_char as char == 'q' {
-                break;
-            }
-            // print 3 times and wait between
-            print_character_random(last_char, 1, 20);
-            rost_api::syscalls::yield_thread();
-            wait(500);
-            print_character_random(last_char, 1, 20);
-            rost_api::syscalls::yield_thread();
-            wait(500);
-            print_character_random(last_char, 1, 20);
+        let last_char = rost_api::syscalls::receive_character_from_dbgu() as char;
+
+        // quit on q
+        if last_char as char == 'q' {
+            break;
         }
+        // print 3 times and wait between
+        print_character_random(last_char, 1, 20);
+        rost_api::syscalls::sleep(500);
+        print_character_random(last_char, 1, 20);
+        rost_api::syscalls::sleep(500);
+        print_character_random(last_char, 1, 20);
     }
 }
 

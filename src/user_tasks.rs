@@ -76,11 +76,7 @@ pub fn read_eval_print_loop() {
     add_command("task3", || unsafe {
         TASK3_ACTIVE = true;
         let id = rost_api::syscalls::create_thread(crate::custom_user_code_thread);
-        loop {
-            if threads::is_thread_done(id) {
-                break;
-            }
-        }
+        rost_api::syscalls::join_thread(id, None);
         TASK3_ACTIVE = false;
     });
     add_command("task4", || unsafe {
@@ -140,7 +136,8 @@ pub fn read_eval_print_loop() {
         println!("{}", system_timer::get_current_real_time());
     });
     add_command("custom_code", || {
-        rost_api::syscalls::create_thread(crate::custom_user_code_thread);
+        let id = rost_api::syscalls::create_thread(crate::custom_user_code_thread);
+        rost_api::syscalls::join_thread(id, None);
     });
     add_command("software_interrupt", || unsafe {
         asm!("swi #99");

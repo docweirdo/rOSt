@@ -130,6 +130,7 @@ pub fn print_threads() {
     }
 }
 
+/// returns running thread
 pub fn get_current_thread<'a>() -> &'a mut TCB {
     unsafe {
         THREADS
@@ -139,20 +140,9 @@ pub fn get_current_thread<'a>() -> &'a mut TCB {
     }
 }
 
+/// returns thread for given id or None if not found
 pub fn get_thread_by_id<'a>(thread_id: usize) -> Option<&'a mut TCB> {
     unsafe { THREADS.iter_mut().find(|t| t.id == thread_id) }
-}
-
-pub fn is_thread_done(id: usize) -> bool {
-    unsafe {
-        let thread = THREADS.iter().find(|t| t.id == id);
-        if let Some(thread) = thread {
-            if thread.state == ThreadState::Running || thread.state == ThreadState::Ready {
-                return false;
-            }
-        }
-        true
-    }
 }
 
 /// Prepares newly created threads for lifes challenges.   
