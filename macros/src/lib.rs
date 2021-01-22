@@ -14,7 +14,6 @@ enum Exception {
     SoftwareInterrupt,
     PrefetchAbort,
     DataAbort,
-    Interrupt,
 }
 
 #[proc_macro_attribute]
@@ -37,7 +36,6 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
         "UndefinedInstruction" => Exception::UndefinedInstruction,
         "PrefetchAbort" => Exception::PrefetchAbort,
         "DataAbort" => Exception::DataAbort,
-        "SystemInterrupt" => Exception::Interrupt,
         _ => {
             return parse::Error::new(ident.span(), "This is not a valid exception name")
                 .to_compile_error()
@@ -93,29 +91,27 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
     let tramp_ident = Ident::new(&format!("{}_trampoline", f.sig.ident), Span::call_site());
     let ident = &f.sig.ident;
 
-    let use_nested_interrupt;
-    let dont_restore_registers;
+    let use_nested_interrupt = false;
     let lr_size;
 
     match exn {
-        Exception::Interrupt => {
-            use_nested_interrupt = true;
-            dont_restore_registers = false;
-            lr_size = 4;
-        }
         Exception::SoftwareInterrupt => {
-            use_nested_interrupt = false;
-            dont_restore_registers = true;
-            lr_size = 0;
+            return quote!(
+                #[naked]
+                #[no_mangle]
+                #[doc(hidden)]
+                #[export_name = #ident_s]
+                pub unsafe extern "C" fn #tramp_ident() {
+                    processor::exception_routine!(subroutine=#ident, software_interrupt=true);
+                }
+                #f
+            )
+            .into();
         }
         Exception::UndefinedInstruction | Exception::Reset => {
-            use_nested_interrupt = false;
-            dont_restore_registers = false;
             lr_size = 0;
         }
         Exception::PrefetchAbort | Exception::DataAbort => {
-            use_nested_interrupt = false;
-            dont_restore_registers = true;
             lr_size = 4;
         }
     }
@@ -126,7 +122,7 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
         #[doc(hidden)]
         #[export_name = #ident_s]
         pub unsafe extern "C" fn #tramp_ident() {
-            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt, dont_restore_registers=#dont_restore_registers);
+            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt);
         }
 
         #f
@@ -175,14 +171,13 @@ pub fn interrupt(args: TokenStream, input: TokenStream) -> TokenStream {
     let ident = &f.sig.ident;
 
     let use_nested_interrupt = true;
-    let dont_restore_registers = false;
     let lr_size = 4;
 
     quote!(
         #[naked]
         #[doc(hidden)]
         pub unsafe extern "C" fn #tramp_ident() {
-            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt, dont_restore_registers=#dont_restore_registers);
+            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt);
         }
 
         #f
