@@ -1,6 +1,7 @@
 use crate::system_timer;
 
 use super::processor;
+use crate::alloc::borrow::ToOwned;
 use alloc::{alloc::alloc, alloc::dealloc, boxed::Box};
 use alloc::{
     collections::btree_map::BTreeMap, collections::btree_set::BTreeSet,
@@ -371,7 +372,20 @@ pub fn schedule(next_thread_id: Option<usize>) {
         }
         RUNNING_THREAD_ID = next_thread.id;
 
-        trace!(
+        if crate::user_tasks::TASK4_ACTIVE {
+            let convert = |id| match id {
+                0 => "idle".to_owned(),
+                2 => "repl".to_owned(),
+                _ => alloc::format!("{}", id),
+            };
+            crate::println!(
+                " {} -> {}",
+                convert(running_thread.id),
+                convert(next_thread.id)
+            );
+        }
+
+        log::trace!(
             "t#: {} switch thread from {} sp:{:#X} to {} sp:{:#X}",
             THREADS.len(),
             running_thread.id,

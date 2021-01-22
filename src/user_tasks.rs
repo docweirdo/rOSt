@@ -81,6 +81,7 @@ pub fn read_eval_print_loop() {
     });
     add_command("task4", || unsafe {
         TASK4_ACTIVE = true;
+        rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
         loop {
             let last_char = rost_api::syscalls::receive_character_from_dbgu() as char;
             if last_char == 'q' {

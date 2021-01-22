@@ -16,6 +16,7 @@ mod exceptions;
 mod fmt;
 mod helpers;
 mod interrupt_controller;
+mod interrupt_handler;
 mod logger;
 mod memory;
 mod processor;
@@ -116,51 +117,7 @@ pub fn boot() {
     system_timer::init_system_timer_interrupt(1000);
     system_timer::set_real_time_timer_interval(0x64);
     dbgu::set_dbgu_recv_interrupt(true);
-    interrupt_controller::init_system_interrupt(
-        || {
-            debug_assert!(processor::interrupts_enabled());
-
-            // sys_timer_interrrupt_handler
-            // print ! if task3 app is active
-            // TODO: do not forget to remove both
-            if unsafe { user_tasks::TASK3_ACTIVE } {
-                println!("!");
-            }
-            if unsafe { user_tasks::TASK4_ACTIVE } {
-                print!("!");
-            }
-
-            interrupt_controller::mark_end_of_interrupt!();
-
-            threads::wakeup_elapsed_threads();
-
-            unsafe {
-                if threads::SCHEDULER_INTERVAL_COUNTER == 0 {
-                    threads::schedule(None);
-                } else {
-                    threads::SCHEDULER_INTERVAL_COUNTER -= 1;
-                }
-            }
-        },
-        move || unsafe {
-            // debug_assert!(processor::interrupts_enabled());
-
-            // dbgu_interrupt_handler,fires when rxready is set
-            // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator
-            let last_char = dbgu::read_char()
-                .expect("there should be a char available in dbgu interrupt")
-                as u8;
-
-            threads::handle_dbgu_new_character_event(last_char as char);
-
-            // TODO: do not forget to remove
-            if user_tasks::TASK4_ACTIVE {
-                user_tasks::task4_dbgu(last_char as char);
-            }
-
-            interrupt_controller::mark_end_of_interrupt!();
-        },
-    );
+    interrupt_controller::init_system_interrupt();
 
     processor::set_interrupts_enabled!(true);
 

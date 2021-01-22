@@ -129,7 +129,7 @@ pub(crate) use _set_interrupts_enabled as set_interrupts_enabled;
 /// enable nested interrupts while using function calls, without the risk  
 /// of corrupting the link register by a second exception to the same exception mode.
 macro_rules! _exception_routine {
-    (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=true, mark_end_of_interrupt=true, dont_restore_registers=false) => {
+    (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=true, dont_restore_registers=false) => {
             asm!(
                 // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
                 "push {{r0, r1}}",  // r1, r0   |
@@ -201,7 +201,7 @@ macro_rules! _exception_routine {
             , subcall = sym $subcall, lr_size = const $lr_size,
              options(noreturn));
     };
-    (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=false, mark_end_of_interrupt=false, dont_restore_registers=false) => {
+    (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=false, dont_restore_registers=false) => {
             asm!(
                 // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
                 "push {{r0, r1}}",  // r1, r0   |
@@ -263,7 +263,7 @@ macro_rules! _exception_routine {
             , subcall = sym $subcall,
             lr_size = const $lr_size, options(noreturn));
     };
-    (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=false, mark_end_of_interrupt=false, dont_restore_registers=true) => {
+    (subroutine=$subcall:ident, lr_size=$lr_size:expr, nested_interrupt=false, dont_restore_registers=true) => {
         asm!(
             // save two work registers (r0, r1), get sp_user and push spsr and context to userstack
             "push {{r5, r6}}",  // r6, r5   |
