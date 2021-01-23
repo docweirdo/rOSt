@@ -114,8 +114,8 @@ pub fn boot() {
     // Initialize needed interrupts
 
     // set the wanted interval for the system timer
-    system_timer::init_system_timer_interrupt(1000);
-    system_timer::set_real_time_timer_interval(0x64);
+    system_timer::init_system_timer_interrupt(core::time::Duration::from_millis(10));
+    system_timer::set_real_time_timer_interval(core::time::Duration::from_millis(10));
     dbgu::set_dbgu_recv_interrupt(true);
     interrupt_controller::init_system_interrupt();
 
