@@ -101,10 +101,7 @@ where
     debug_assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
     unsafe {
         RUNNING_THREAD_ID = id;
-        let thread = THREADS
-            .iter_mut()
-            .find(|t| t.id == RUNNING_THREAD_ID)
-            .unwrap();
+        let thread = get_current_thread();
         thread.state = ThreadState::Running;
         thread.stack_current = thread.stack_start;
 
@@ -159,11 +156,7 @@ unsafe extern "C" fn new_thread_entry() {
         processor::switch_processor_mode!(processor::ProcessorMode::User);
     }
 
-    (THREADS
-        .iter_mut()
-        .find(|t| t.id == RUNNING_THREAD_ID)
-        .unwrap()
-        .entry)();
+    (get_current_thread().entry)();
     rost_api::syscalls::exit_thread();
 }
 
@@ -221,20 +214,17 @@ pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
 pub fn exit_internal() {
     debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
-        THREADS
-            .iter_mut()
-            .find(|t| t.id == RUNNING_THREAD_ID)
-            .unwrap()
-            .state = ThreadState::Stopped;
+        let current_thread = get_current_thread();
+        current_thread.state = ThreadState::Stopped;
 
-        // mark all waiting (joined) threads as ready
-        for thread in &mut THREADS {
+        // remove id from joined parent thread if available
+        if let Some(parent_thread) = get_thread_by_id(current_thread.parent_thread_id) {
             if let ThreadState::Waiting(WaitingReason::Join(joined_thread_ids, _)) =
-                &mut thread.state
+                &mut parent_thread.state
             {
                 let present = joined_thread_ids.remove(&RUNNING_THREAD_ID);
                 if present && joined_thread_ids.is_empty() {
-                    thread.state = ThreadState::Ready;
+                    parent_thread.state = ThreadState::Ready;
                 }
             }
         }
