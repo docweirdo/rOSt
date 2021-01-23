@@ -47,6 +47,9 @@ const KEY_BACKSPACE: char = 0x8 as char;
 const KEY_DELETE: char = 0x7F as char;
 const KEY_TAB: char = 0x9 as char;
 
+const KEY_ESCAPE: u8 = 0x1B;
+const KEY_LEFT_SQUARE_BRACKET: u8 = 0x5B;
+
 static mut THREAD_TEST_COUNT: usize = 0;
 
 struct Command {
@@ -133,7 +136,14 @@ pub fn read_eval_print_loop() {
         }
     });
     add_command("uptime", || {
-        println!("{}", system_timer::get_current_real_time());
+        println!(
+            "uptime: {:?}",
+            core::time::Duration::from_millis(
+                (system_timer::get_current_real_time() as u128
+                    * system_timer::get_real_time_unit_interval().as_millis())
+                    as u64
+            )
+        );
     });
     add_command("custom_code", || {
         let id = rost_api::syscalls::create_thread(crate::custom_user_code_thread);
@@ -216,6 +226,8 @@ pub fn read_eval_print_loop() {
         RNG = Some(Pcg64::seed_from_u64(0xDEADBEEF));
     }
 
+    let mut history: Vec<String> = Vec::new();
+
     loop {
         rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
 
@@ -233,12 +245,32 @@ pub fn read_eval_print_loop() {
 
         let mut found_autocomplete_commands: Vec<&str> = Vec::new();
 
+        fn replace_displayed_text(char_buf: &mut String, w: &str) {
+            for character in char_buf.chars() {
+                if character.is_alphanumeric() {
+                    print!("{0} {0}", KEY_BACKSPACE);
+                }
+            }
+            char_buf.clear();
+            char_buf.push_str(w);
+            print!("{}", char_buf);
+        }
+
         loop {
             let last_char: char = rost_api::syscalls::receive_character_from_dbgu() as char;
 
             if last_char == KEY_ENTER {
                 println!();
                 rost_api::syscalls::unsubscribe(rost_api::syscalls::ThreadServices::DBGU);
+
+                if !char_buf.is_empty() {
+                    if let Some(pos) = history.iter().position(|s| **s == char_buf) {
+                        let old_pos_element = history.remove(pos);
+                        history.push(old_pos_element);
+                    } else {
+                        history.push(char_buf.clone());
+                    }
+                }
                 break;
             }
             if last_char == KEY_DELETE || last_char == KEY_BACKSPACE {
@@ -275,21 +307,73 @@ pub fn read_eval_print_loop() {
                                 0
                             }
                         };
-                        let mut replace_displayed_text = |w| {
-                            for _ in 0..char_buf.len() {
-                                print!("{0} {0}", KEY_BACKSPACE);
-                            }
-                            char_buf.clear();
-                            char_buf.push_str(w);
-                            print!("{}", char_buf);
-                        };
-                        replace_displayed_text(&found_autocomplete_commands[pos]);
+                        replace_displayed_text(&mut char_buf, &found_autocomplete_commands[pos]);
                     }
                 }
             } else {
                 found_autocomplete_commands.clear();
                 char_buf.push(last_char);
-                print!("{}", last_char);
+
+                match char_buf.as_bytes() {
+                    // check for ascii escape sequence
+                    [.., KEY_ESCAPE, KEY_LEFT_SQUARE_BRACKET, command] => {
+                        let command = *command;
+                        // remove last three characters because we found a escape sequence
+                        for _ in 1..=3 {
+                            char_buf.pop();
+                        }
+                        match command {
+                            // CURSOR DOWN: upwards in history
+                            b'A' => {
+                                if !history.is_empty() {
+                                    if !char_buf.is_empty() {
+                                        if let Some(find_pos) =
+                                            history.iter().position(|s| *s == char_buf)
+                                        {
+                                            let pos;
+                                            if find_pos > 0 {
+                                                pos = find_pos - 1;
+                                            } else {
+                                                pos = 0;
+                                            }
+                                            replace_displayed_text(&mut char_buf, &history[pos]);
+                                        }
+                                    } else {
+                                        replace_displayed_text(
+                                            &mut char_buf,
+                                            &history.last().unwrap(),
+                                        );
+                                    }
+                                }
+                            }
+                            // CURSOR DOWN: downwards in history
+                            b'B' => {
+                                if !history.is_empty() && !char_buf.is_empty() {
+                                    if let Some(find_pos) =
+                                        history.iter().position(|s| *s == char_buf)
+                                    {
+                                        if find_pos + 1 < history.len() {
+                                            replace_displayed_text(
+                                                &mut char_buf,
+                                                &history[find_pos + 1],
+                                            );
+                                        } else {
+                                            replace_displayed_text(&mut char_buf, "");
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                print!("unknown escape sequence: {}\n$ ", command as char);
+                            }
+                        }
+                    }
+                    _ => {
+                        if last_char.is_alphanumeric() || last_char == ' ' {
+                            print!("{}", last_char);
+                        }
+                    }
+                }
             }
         }
 
