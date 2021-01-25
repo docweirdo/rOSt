@@ -30,11 +30,11 @@ pub fn task4_dbgu(last_char: char) {
         rost_api::syscalls::create_thread(move || {
             // print 3 times and wait between
             print_character_random(last_char, 5, 30);
-            rost_api::syscalls::sleep(1000);
+            rost_api::syscalls::sleep_ms(1000);
             if unsafe { TASK4_ACTIVE } {
                 print_character_random(last_char, 5, 30);
             }
-            rost_api::syscalls::sleep(1000);
+            rost_api::syscalls::sleep_ms(1000);
             if unsafe { TASK4_ACTIVE } {
                 print_character_random(last_char, 5, 30);
             }
@@ -115,7 +115,7 @@ pub fn read_eval_print_loop() {
                 } else {
                     for _ in 0..11 {
                         print!("{}", last_char);
-                        rost_api::syscalls::sleep(100);
+                        rost_api::syscalls::sleep_ms(100);
                     }
                 }
             });
@@ -138,11 +138,7 @@ pub fn read_eval_print_loop() {
     add_command("uptime", || {
         println!(
             "uptime: {:?}",
-            core::time::Duration::from_millis(
-                (system_timer::get_current_real_time() as u128
-                    * system_timer::get_real_time_unit_interval().as_millis())
-                    as u64
-            )
+            system_timer::get_current_real_time_as_duration()
         );
     });
     add_command("custom_code", || {
@@ -158,29 +154,51 @@ pub fn read_eval_print_loop() {
     add_command("data_abort", || unsafe {
         asm!(
             "
-         ldr r0, =0x90000000
-         str r0, [r0]"
+         ldr {tmp}, =0x90000000
+         str {tmp}, [{tmp}]", tmp = out(reg) _
         );
     });
     add_command("threads", || {
         threads::print_threads();
     });
+    add_command("sleep_test", || {
+        println!(
+            "sleep with duration 5s - start_at: {:?}",
+            system_timer::get_current_real_time_as_duration()
+        );
+        println!(
+            "reported_duration: {:?}",
+            core::time::Duration::from_millis(rost_api::syscalls::sleep_ms(5000) as u64)
+        );
+        println!(
+            "stop_at: {:?}",
+            system_timer::get_current_real_time_as_duration()
+        );
+    });
     add_command("thread_test", || unsafe {
         THREAD_TEST_COUNT = 0;
         let mut thread_ids: Vec<usize> = Vec::new();
 
-        for id in 0..10 {
+        for id in 0..=10 {
             thread_ids.push(rost_api::syscalls::create_thread(move || {
                 THREAD_TEST_COUNT += 1;
-                println!("thread {} slept {}", id, rost_api::syscalls::sleep(id * 50));
+                println!(
+                    "thread {} slept {:?} expected: {:?}",
+                    id,
+                    core::time::Duration::from_millis(rost_api::syscalls::sleep_ms(id * 500) as u64),
+                    core::time::Duration::from_millis((id * 500) as u64)
+                );
                 THREAD_TEST_COUNT += 1;
                 if THREAD_TEST_COUNT == 15 {
                     threads::print_threads();
                 }
                 println!(
-                    "thread {} slept {}",
+                    "thread {} slept {:?} expected: {:?}",
                     id,
-                    rost_api::syscalls::sleep(id * 100)
+                    core::time::Duration::from_millis(
+                        rost_api::syscalls::sleep_ms(id * 1000) as u64
+                    ),
+                    core::time::Duration::from_millis((id * 1000) as u64)
                 );
                 THREAD_TEST_COUNT += 1;
             }));
@@ -190,7 +208,7 @@ pub fn read_eval_print_loop() {
             rost_api::syscalls::join_thread(id, None);
         }
 
-        assert!(THREAD_TEST_COUNT == 30);
+        assert!(THREAD_TEST_COUNT == 33);
         println!("thread_test end {}", THREAD_TEST_COUNT);
     });
 
@@ -206,7 +224,7 @@ pub fn read_eval_print_loop() {
                     id,
                     rost_api::syscalls::receive_character_from_dbgu() as char
                 );
-                rost_api::syscalls::sleep(50);
+                rost_api::syscalls::sleep_ms(50);
                 println!(
                     "dbgu_test: thread {} got {}",
                     id,
@@ -367,7 +385,7 @@ pub fn read_eval_print_loop() {
                         }
                     }
                     _ => {
-                        if last_char.is_alphanumeric() || last_char == ' ' {
+                        if last_char.is_alphanumeric() || matches!(last_char, ' ' | '_') {
                             print!("{}", last_char);
                         }
                     }

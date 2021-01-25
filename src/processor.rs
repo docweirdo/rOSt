@@ -34,11 +34,11 @@ macro_rules! _switch_processor_mode {
         unsafe {
             asm!(
                 "
-            MRS r0, cpsr
-            BIC r0, r0, #0x1F
-            ORR r0, r0, {}
-            MSR cpsr_c, r0
-            ", const $mode as i32
+            MRS {tmp}, cpsr
+            BIC {tmp}, {tmp}, #0x1F
+            ORR {tmp}, {tmp}, {mode}
+            MSR cpsr_c, {tmp}
+            ", mode = const $mode as i32, tmp = out(reg) _
             );
         }
    };
@@ -65,10 +65,11 @@ macro_rules! _set_interrupts_enabled {
         unsafe {
             asm!(
                 "
-                MRS r0, CPSR
-                ORR r0, r0, #0x80
-                MSR    CPSR_c, r0
-            "
+                MRS {tmp}, CPSR
+                ORR {tmp}, {tmp}, #0x80
+                MSR    CPSR_c, {tmp}
+            ",
+                tmp = out(reg) _
             )
         }
     };
@@ -77,10 +78,13 @@ macro_rules! _set_interrupts_enabled {
         unsafe {
             asm!(
                 "
-                MRS r0, CPSR
-                BIC r0, r0, #0x80
-                MSR    CPSR_c, r0
-            "
+                
+                MRS {tmp}, CPSR
+                BIC {tmp}, {tmp}, #0x80
+                MSR    CPSR_c, {tmp}
+               
+            ",
+            tmp = out(reg) _
             )
         }
     };
@@ -212,6 +216,7 @@ macro_rules! _exception_routine {
                 "pop {{r1}}",       // r1, r0   |
                 "sub lr, lr, #{lr_size}",
                 "stmfd r1!, {{r0, r2-r12,r14}}",  // r1, r0   |   spsr, r2-12, r14_irq
+                "mov r12, lr",
 
                 // save original r0 and cpsr on userstack
                 "pop {{r0}}",               // r1   |   spsr, r2-12, r14_irq
@@ -231,6 +236,7 @@ macro_rules! _exception_routine {
                 "push {{r1, r14}}",         // spsr, r2-12, r14_irq, r0, cpsr, r1, r14_user
 
                 // jump to subcall
+                "mov r0, r12",
                 "bl {subcall}",
 
                 // restore user r1 and lr, switch back to former exception mode

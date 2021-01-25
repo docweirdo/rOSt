@@ -77,6 +77,12 @@ pub fn get_current_real_time() -> u32 {
     read_register(ST::BASE_ADDRESS, ST::CRTR)
 }
 
+pub fn get_current_real_time_as_duration() -> core::time::Duration {
+    core::time::Duration::from_millis(
+        get_current_real_time() as u64 * get_real_time_unit_interval().as_millis() as u64,
+    )
+}
+
 pub fn has_system_timer_elapsed() -> bool {
     read_register_bit(ST::BASE_ADDRESS, ST::SR, 0) != 0
 }

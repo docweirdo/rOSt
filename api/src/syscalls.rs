@@ -25,56 +25,62 @@ pub enum ThreadServices {
     DBGU = 10,
 }
 
-pub fn subscribe(service: ThreadServices) {
+#[inline(never)]
+pub extern "C" fn subscribe(service: ThreadServices) {
     unsafe {
-        asm!("swi #{}", const Syscalls::Subscribe as u32, in("r0") service as u32);
+        asm!("swi #{call_id}", call_id = const Syscalls::Subscribe as u32, in("r0") service as u32);
     }
 }
 
-pub fn unsubscribe(service: ThreadServices) {
+#[inline(never)]
+pub extern "C" fn unsubscribe(service: ThreadServices) {
     unsafe {
-        asm!("swi #{}", const Syscalls::Unsubscribe as u32, in("r0") service as u32);
+        asm!("swi #{call_id}", call_id = const Syscalls::Unsubscribe as u32, in("r0") service as u32);
     }
 }
 
-pub fn get_current_realtime() -> usize {
+#[inline(never)]
+pub extern "C" fn get_current_realtime() -> usize {
     let time: usize;
     unsafe {
-        asm!("swi #{}", const Syscalls::GetCurrentRealTime as u32, lateout("r0") time);
+        asm!("swi #{call_id}", call_id = const Syscalls::GetCurrentRealTime as u32, lateout("r0") time);
     }
     time
 }
 
-pub fn sleep(time: usize) -> usize {
+#[inline(never)]
+pub extern "C" fn sleep_ms(time_ms: usize) -> usize {
     let actual_sleep: usize;
     unsafe {
-        asm!("swi #{}", 
-        const Syscalls::Sleep as u32, in("r0") time, lateout("r0") actual_sleep)
+        asm!("swi #{call_id}", 
+        call_id = const Syscalls::Sleep as u32, in("r0") time_ms, lateout("r0") actual_sleep)
     }
     actual_sleep
 }
 
+#[inline(never)]
 pub fn join_thread(thread_id: usize, timeout: Option<usize>) -> usize {
     let child_thread_result: usize;
     unsafe {
-        asm!("swi #{}", 
-        const Syscalls::JoinThread as u32, in("r0") thread_id, in("r1") timeout.unwrap_or_default(), lateout("r0") child_thread_result)
+        asm!("swi #{call_id}", 
+        call_id = const Syscalls::JoinThread as u32, in("r0") thread_id, in("r1") timeout.unwrap_or_default(), lateout("r0") child_thread_result)
     }
     child_thread_result
 }
 
-pub fn allocate(size: usize, align: usize) -> *mut u8 {
+#[inline(never)]
+pub extern "C" fn allocate(size: usize, align: usize) -> *mut u8 {
     let out_ptr: usize;
     unsafe {
         asm!("
-              swi #{}
-              mov {}, r0
-            ", const Syscalls::Allocate as u32, out(reg) out_ptr, in("r0") size, in("r1") align,);
+              swi #{call_id}
+            ", call_id = const Syscalls::Allocate as u32, lateout("r0") out_ptr, in("r0") size, in("r1") align,);
     }
     out_ptr as *mut u8
 }
 
-pub fn deallocate(ptr: *mut u8, size: usize, align: usize) {
+#[inline(never)]
+pub extern "C" fn deallocate(ptr: *mut u8, size: usize, align: usize) {
     unsafe {
         asm!("
               swi #{call_id}
@@ -82,32 +88,34 @@ pub fn deallocate(ptr: *mut u8, size: usize, align: usize) {
     }
 }
 
+#[inline(never)]
 pub fn send_str_to_dbgu(chars: &str) {
     for character in chars.chars() {
         send_character_to_dbgu(character as u8);
     }
 }
 
-pub fn send_character_to_dbgu(character: u8) {
+#[inline(never)]
+pub extern "C" fn send_character_to_dbgu(character: u8) {
     unsafe {
-        asm!("mov r0, {}
-              swi #{}
-            ", in(reg) character as u8, const Syscalls::SendDBGU as u32);
+        asm!("swi #{call_id}", call_id = const Syscalls::SendDBGU as u32, in("r0") character as u8);
     }
 }
 
-pub fn receive_character_from_dbgu() -> u8 {
+#[inline(never)]
+pub extern "C" fn receive_character_from_dbgu() -> u8 {
     let out_char: u32;
     unsafe {
-        asm!("swi #{}", const Syscalls::ReceiveDBGU as u32, lateout("r0") out_char, in("r0") 1);
+        asm!("swi #{call_id}", call_id = const Syscalls::ReceiveDBGU as u32, lateout("r0") out_char, in("r0") 1);
     }
     out_char as u8
 }
 
+#[inline(never)]
 pub fn receive_character_from_dbgu_noblock() -> Option<u8> {
     let out_char: u32;
     unsafe {
-        asm!("swi #{}", const Syscalls::ReceiveDBGU as u32, lateout("r0") out_char, in("r0") 0);
+        asm!("swi #{call_id}", call_id = const Syscalls::ReceiveDBGU as u32, lateout("r0") out_char, in("r0") 0);
     }
     if out_char == 0xFFFF {
         return None;
@@ -116,30 +124,30 @@ pub fn receive_character_from_dbgu_noblock() -> Option<u8> {
 }
 
 /// System call to create a thread via software interrupt.
-pub extern "C" fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
+#[inline(never)]
+pub fn create_thread<F: FnMut() + 'static>(entry: F) -> usize {
     let id: usize;
     unsafe {
         let entry_raw: (u32, u32) =
             core::mem::transmute(Box::into_raw(Box::new(entry) as Box<dyn FnMut() + 'static>));
 
-        asm!("mov r0, {0}
-              mov r1, {1}
-              swi #30
-              mov {2}, r0", in(reg) entry_raw.0, in(reg) entry_raw.1, out(reg) id);
+        asm!("swi #{call_id}", call_id = const Syscalls::CreateThread as u32, in("r0") entry_raw.0, in("r1") entry_raw.1, lateout("r0") id);
     }
     id
 }
 
 /// System call to stop and exit the current thread via software interrupt.
+#[inline(never)]
 pub extern "C" fn exit_thread() {
     unsafe {
-        asm!("swi #31");
+        asm!("swi #{call_id}", call_id = const Syscalls::ExitThread as u32);
     }
 }
 
 /// System call to yield the current thread via software interrupt.
+#[inline(never)]
 pub extern "C" fn yield_thread() {
     unsafe {
-        asm!("swi #32");
+        asm!("swi #{call_id}", call_id = const Syscalls::YieldThread as u32);
     }
 }

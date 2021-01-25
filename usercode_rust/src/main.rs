@@ -51,9 +51,9 @@ fn task3() {
         }
         // print 3 times and wait between
         print_character_random(last_char, 1, 20);
-        rost_api::syscalls::sleep(500);
+        rost_api::syscalls::sleep_ms(500);
         print_character_random(last_char, 1, 20);
-        rost_api::syscalls::sleep(500);
+        rost_api::syscalls::sleep_ms(500);
         print_character_random(last_char, 1, 20);
     }
 }

@@ -55,9 +55,9 @@ macro_rules! _mark_end_of_interrupt{
     () => {
         #[allow(unused_unsafe)]
         unsafe { asm!("
-            ldr r0, ={}
-            str r0, [r0, #{}]
-        ", const $crate::interrupt_controller::AIC::BASE_ADDRESS, const $crate::interrupt_controller::AIC::EOICR) };
+            ldr {tmp}, ={base}
+            str {tmp}, [{tmp}, #{offset}]
+        ", tmp = out(reg) _, base = const $crate::interrupt_controller::AIC::BASE_ADDRESS, offset = const $crate::interrupt_controller::AIC::EOICR) };
     }
 }
 

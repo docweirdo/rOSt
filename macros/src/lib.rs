@@ -45,8 +45,8 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut valid_signature = f.sig.constness.is_none()
         && f.vis == Visibility::Inherited
-        && f.sig.abi.is_none()
-        && f.sig.inputs.is_empty()
+        // && f.sig.abi.is_none()
+        //&& f.sig.inputs.is_empty()
         && f.sig.generics.params.is_empty()
         && f.sig.generics.where_clause.is_none()
         && f.sig.variadic.is_none();

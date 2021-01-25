@@ -85,9 +85,9 @@ where
             unsafe {
                 // wait for interrupt low power mode
                 asm!(
-                    "mov r0, 0
-                     mcr p15, 0, r0, c7, c0, 4"
-                );
+                    "mov {tmp}, 0
+                     mcr p15, 0, {tmp}, c7, c0, 4"
+                , tmp = out(reg) _);
             }
         }
     }
@@ -395,6 +395,7 @@ pub fn schedule(next_thread_id: Option<usize>) {
 /// and returns to the now different instruction pointed to by the
 /// Link Register.
 #[naked]
+#[inline(never)]
 unsafe extern "C" fn switch_thread(_running_thread: &*mut u8, _current_thread: &*mut u8) {
     asm!(
         "push {{r0-r12}}

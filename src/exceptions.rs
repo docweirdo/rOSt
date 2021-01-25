@@ -9,29 +9,20 @@ use rost_api::syscalls::Syscalls;
 use threads::ThreadState;
 
 #[rost_macros::exception]
-unsafe fn Reset() {
-    error!("reset handler");
-    panic!();
+unsafe extern "C" fn Reset() {
+    panic!("reset handler");
 }
 
 #[rost_macros::exception]
-unsafe fn UndefinedInstruction() {
+unsafe extern "C" fn UndefinedInstruction(lr: usize) {
     trace!("undefined instruction handler");
     debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
 
-    let mut lr: usize;
-    asm!("mov {}, r14", out(reg) lr);
-
-    error!("undefined instruction at {:#X}", lr - 4);
-    panic!();
+    panic!("undefined instruction at {:#X}", lr - 4);
 }
 
 #[rost_macros::exception]
 unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_id: u32) -> usize {
-    // let mut lr: usize;
-    // asm!("mov {}, r12", out(reg) lr);
-    // println!("software interrupt at {:#X}", lr-4);
-
     trace!(
         "software interrupt handler {} {} {} {}",
         arg0,
@@ -153,13 +144,17 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
             let current_time = system_timer::get_current_real_time() as usize;
             let current_tcb = threads::get_current_thread();
 
+            let time_in_realtime_units: usize =
+                arg0 as usize / system_timer::get_real_time_unit_interval().as_millis() as usize;
+
             current_tcb.state = threads::ThreadState::Waiting(threads::WaitingReason::Sleep(
-                current_time + arg0 as usize,
+                current_time + time_in_realtime_units,
             ));
 
             threads::schedule(None);
 
-            system_timer::get_current_real_time() as usize - current_time as usize
+            system_timer::get_real_time_unit_interval().as_millis() as usize
+                * (system_timer::get_current_real_time() as usize - current_time as usize)
         }
         Ok(Syscalls::JoinThread) => {
             trace!("syscall: JoinThread");
@@ -178,7 +173,8 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
             let current_tcb = threads::get_current_thread();
 
             if join_thread.parent_thread_id != current_tcb.id {
-                panic!("JoinThread: you cannot join a thread which is not your parent thread");
+                panic!("JoinThread: you cannot join a thread which is not your parent thread: p: {} != {}",
+                        join_thread.parent_thread_id, current_tcb.id);
             }
 
             if let threads::ThreadState::Waiting(threads::WaitingReason::Join(
@@ -215,28 +211,21 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
 }
 
 #[rost_macros::exception]
-unsafe fn PrefetchAbort() {
+unsafe extern "C" fn PrefetchAbort(lr: usize) {
     error!("prefetch abort handler");
     debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
 
-    let mut lr: usize;
-    asm!("mov {}, r14", out(reg) lr);
-
-    error!("prefetch abort at {:#X}", lr - 4);
-    panic!();
+    panic!("prefetch abort at {:#X}", lr - 4);
 }
 
 #[rost_macros::exception]
-unsafe fn DataAbort() {
+unsafe extern "C" fn DataAbort(lr: usize) {
     error!("data abort handler");
     debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
 
-    let mut lr: usize;
-    asm!("mov {}, pc", out(reg) lr);
-    error!(
+    panic!(
         "data abort at {:#X} for address {:#X}",
-        lr - 8,
+        lr - 4,
         memory::mc_get_abort_address() // doesn't work in the emulator
     );
-    panic!();
 }
