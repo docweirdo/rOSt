@@ -158,6 +158,13 @@ pub fn read_eval_print_loop() {
          str {tmp}, [{tmp}]", tmp = out(reg) _
         );
     });
+    add_command("heap_size", || {
+        println!(
+            "current heap size: {:#X}, left: {:#X}",
+            allocator::get_current_heap_size(),
+            allocator::get_heap_size_left()
+        );
+    });
     add_command("threads", || {
         threads::print_threads();
     });
@@ -191,6 +198,11 @@ pub fn read_eval_print_loop() {
                 THREAD_TEST_COUNT += 1;
                 if THREAD_TEST_COUNT == 15 {
                     threads::print_threads();
+                    println!(
+                        "current heap size: {:#X}, left: {:#X}",
+                        allocator::get_current_heap_size(),
+                        allocator::get_heap_size_left()
+                    );
                 }
                 println!(
                     "thread {} slept {:?} expected: {:?}",

@@ -7,7 +7,7 @@ version = "0.1.0"
 
 [dependencies]
 arrayvec = { version = "0.5", default-features = false, features = ["unstable-const-fn"]}
-#linked_list_allocator = { version = "0.8", default-features = false, features = ["alloc_ref"]}
+linked_list_allocator = { version = "0.8", default-features = false, features = ["const_mut_refs"]}
 log = { git = "https://github.com/skomski/log", default-features = false}
 rand =  { version = "0.8.2", default-features = false}
 rand_pcg = "0.3"

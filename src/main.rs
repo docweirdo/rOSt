@@ -99,9 +99,11 @@ pub unsafe extern "C" fn _start() -> ! {
 ///
 /// TODO: Add detailed description
 pub fn boot() {
+    memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
+    allocator::init_allocator(); // init allocator before print allocations
+
     debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     debug_assert!(!processor::interrupts_enabled());
-    memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
 
     println!(
         "{} {}: the start",
