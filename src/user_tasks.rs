@@ -246,10 +246,8 @@ pub fn read_eval_print_loop() {
         let mut found_autocomplete_commands: Vec<&str> = Vec::new();
 
         fn replace_displayed_text(char_buf: &mut String, w: &str) {
-            for character in char_buf.chars() {
-                if character.is_alphanumeric() {
-                    print!("{0} {0}", KEY_BACKSPACE);
-                }
+            for _ in char_buf.chars() {
+                print!("{0} {0}", KEY_BACKSPACE);
             }
             char_buf.clear();
             char_buf.push_str(w);
