@@ -7,7 +7,7 @@ use alloc::{
     collections::btree_map::BTreeMap, collections::btree_set::BTreeSet,
     collections::vec_deque::VecDeque, vec::Vec,
 };
-use core::{alloc::Layout, debug_assert, panic};
+use core::{alloc::Layout, panic};
 use log::trace;
 
 const THREAD_STACK_SIZE: usize = 1024 * 8;
@@ -73,7 +73,7 @@ pub fn init_runtime<F>(entry: F) -> !
 where
     F: FnMut() + 'static,
 {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
 
     unsafe {
         THREADS.reserve(24);
@@ -93,12 +93,12 @@ where
     }
 
     let id = create_thread_internal(Box::new(idle_thread));
-    debug_assert!(id == IDLE_THREAD_ID);
-    debug_assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
+    assert!(id == IDLE_THREAD_ID);
+    assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
 
     let id = create_thread_internal(Box::new(entry));
-    debug_assert!(id == 1);
-    debug_assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
+    assert!(id == 1);
+    assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
     unsafe {
         RUNNING_THREAD_ID = id;
         let thread = get_current_thread();
@@ -149,7 +149,7 @@ pub fn get_thread_by_id<'a>(thread_id: usize) -> Option<&'a mut TCB> {
 /// and switches the processor to `ProcessorMode::User`. Then calls the  
 /// users closure and provides an `exit_thread()` guard beneath.  
 unsafe extern "C" fn new_thread_entry() {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     processor::set_interrupts_enabled!(true);
     // run idle thread in system mode for low power mode
     if RUNNING_THREAD_ID > 0 {
@@ -169,7 +169,7 @@ unsafe extern "C" fn new_thread_entry() {
 /// the address which gets popped into the Link Register pointing
 /// to `new_thread_entry()`.
 pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         let id = LAST_THREAD_ID;
         LAST_THREAD_ID += 1;
@@ -212,7 +212,7 @@ pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
 
 /// Function called by the Kernel to set the running thread to `ThreadState::Stopped`.
 pub fn exit_internal() {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         let current_thread = get_current_thread();
         current_thread.state = ThreadState::Stopped;
@@ -279,7 +279,7 @@ pub fn handle_dbgu_new_character_event(character: char) {
 /// calls `switch_thread` to switch to the selected thread.  
 /// TCBs and Stacks of threads with `ThreadState::Stopped` are removed.
 pub fn schedule(next_thread_id: Option<usize>) {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         if THREADS.is_empty() {
             log::error!("scheduler called before thread initialization");
@@ -343,7 +343,7 @@ pub fn schedule(next_thread_id: Option<usize>) {
             }
         }
         let next_thread = &mut THREADS[next_thread_pos];
-        debug_assert!(next_thread.state == ThreadState::Ready);
+        assert!(next_thread.state == ThreadState::Ready);
 
         next_thread.state = ThreadState::Running;
         // only switch back old thread to ready if not waiting or stopped

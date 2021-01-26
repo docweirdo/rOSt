@@ -102,8 +102,8 @@ pub fn boot() {
     memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
     allocator::init_allocator(); // init allocator before print allocations
 
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
-    debug_assert!(!processor::interrupts_enabled());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(!processor::interrupts_enabled());
 
     println!(
         "{} {}: the start",
@@ -124,8 +124,8 @@ pub fn boot() {
     processor::set_interrupts_enabled!(true);
 
     fn start_thread() {
-        debug_assert!(processor::ProcessorMode::User == processor::get_processor_mode());
-        debug_assert!(processor::interrupts_enabled());
+        assert!(processor::ProcessorMode::User == processor::get_processor_mode());
+        assert!(processor::interrupts_enabled());
 
         rost_api::syscalls::create_thread(user_tasks::read_eval_print_loop);
         // syscalls::create_thread(custom_user_code_thread);

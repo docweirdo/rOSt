@@ -16,7 +16,7 @@ unsafe extern "C" fn Reset() {
 #[rost_macros::exception]
 unsafe extern "C" fn UndefinedInstruction(lr: usize) {
     trace!("undefined instruction handler");
-    debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
+    assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     panic!("undefined instruction at {:#X}", lr - 4);
 }
@@ -30,7 +30,7 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
         arg2,
         service_id
     );
-    debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
+    assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     match Syscalls::try_from(service_id) {
         Ok(Syscalls::YieldThread) => {
@@ -213,7 +213,7 @@ unsafe extern "C" fn SoftwareInterrupt(arg0: u32, arg1: u32, arg2: u32, service_
 #[rost_macros::exception]
 unsafe extern "C" fn PrefetchAbort(lr: usize) {
     error!("prefetch abort handler");
-    debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
+    assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     panic!("prefetch abort at {:#X}", lr - 4);
 }
@@ -221,7 +221,7 @@ unsafe extern "C" fn PrefetchAbort(lr: usize) {
 #[rost_macros::exception]
 unsafe extern "C" fn DataAbort(lr: usize) {
     error!("data abort handler");
-    debug_assert!(processor::get_processor_mode() == ProcessorMode::System);
+    assert!(processor::get_processor_mode() == ProcessorMode::System);
 
     panic!(
         "data abort at {:#X} for address {:#X}",

@@ -6,7 +6,7 @@ use crate::user_tasks;
 use crate::{print, println};
 
 pub fn system_timer_period_interval_timer_elapsed() {
-    debug_assert!(processor::interrupts_enabled());
+    assert!(processor::interrupts_enabled());
 
     // sys_timer_interrrupt_handler
     // print ! if task3 app is active
@@ -32,7 +32,7 @@ pub fn system_timer_period_interval_timer_elapsed() {
 }
 
 pub fn dbgu_character_received() {
-    // debug_assert!(processor::interrupts_enabled());
+    assert!(processor::interrupts_enabled());
 
     // dbgu_interrupt_handler,fires when rxready is set
     // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator
