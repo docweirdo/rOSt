@@ -95,7 +95,8 @@ pub fn read_eval_print_loop() {
     });
     add_command("task5", || {
         /// wait for x realtime clock units
-        fn busy_wait(units: usize) {
+        fn busy_wait_ms(mut units: usize) {
+            units = units / system_timer::get_real_time_unit_interval().as_millis() as usize;
             let last = rost_api::syscalls::get_current_realtime();
             loop {
                 if rost_api::syscalls::get_current_realtime() - last >= units {
@@ -108,14 +109,12 @@ pub fn read_eval_print_loop() {
                 if last_char.is_uppercase() {
                     for _ in 0..11 {
                         print!("{}", last_char);
-                        //let last = rost_api::syscalls::get_current_realtime();
-                        busy_wait(100);
-                        //print!("{} ", rost_api::syscalls::get_current_realtime() - last);
+                        busy_wait_ms(500);
                     }
                 } else {
                     for _ in 0..11 {
                         print!("{}", last_char);
-                        rost_api::syscalls::sleep_ms(100);
+                        rost_api::syscalls::sleep_ms(500);
                     }
                 }
             });
