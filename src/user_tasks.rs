@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use crate::system_timer;
 use crate::{alloc::borrow::ToOwned, print};
 use crate::{allocator, println, threads};
@@ -185,17 +187,29 @@ pub fn read_eval_print_loop() {
         THREAD_TEST_COUNT = 0;
         let mut thread_ids: Vec<usize> = Vec::new();
 
-        for id in 0..=10 {
+        fn sleep_ms_thread(id: usize, time_ms: usize) {
+            let slept_duration = core::time::Duration::from_millis(rost_api::syscalls::sleep_ms(
+                id * time_ms,
+            ) as u64);
+            let expected_duration = core::time::Duration::from_millis((id * time_ms) as u64);
+            assert!(
+                slept_duration
+                    .checked_sub(expected_duration)
+                    .unwrap_or_default()
+                    < Duration::from_millis(50)
+            );
+            println!(
+                "thread {} slept {:?} expected: {:?}",
+                id, slept_duration, expected_duration
+            );
+        }
+
+        for id in 0..=250 {
             thread_ids.push(rost_api::syscalls::create_thread(move || {
                 THREAD_TEST_COUNT += 1;
-                println!(
-                    "thread {} slept {:?} expected: {:?}",
-                    id,
-                    core::time::Duration::from_millis(rost_api::syscalls::sleep_ms(id * 500) as u64),
-                    core::time::Duration::from_millis((id * 500) as u64)
-                );
+                sleep_ms_thread(id, 50);
                 THREAD_TEST_COUNT += 1;
-                if THREAD_TEST_COUNT == 15 {
+                if THREAD_TEST_COUNT == 500 {
                     threads::print_threads();
                     println!(
                         "current heap size: {:#X}, left: {:#X}",
@@ -203,14 +217,7 @@ pub fn read_eval_print_loop() {
                         allocator::get_heap_size_left()
                     );
                 }
-                println!(
-                    "thread {} slept {:?} expected: {:?}",
-                    id,
-                    core::time::Duration::from_millis(
-                        rost_api::syscalls::sleep_ms(id * 1000) as u64
-                    ),
-                    core::time::Duration::from_millis((id * 1000) as u64)
-                );
+                sleep_ms_thread(id, 75);
                 THREAD_TEST_COUNT += 1;
             }));
         }
@@ -219,7 +226,7 @@ pub fn read_eval_print_loop() {
             rost_api::syscalls::join_thread(id, None);
         }
 
-        assert!(THREAD_TEST_COUNT == 33);
+        assert_eq!(THREAD_TEST_COUNT, 753);
         println!("thread_test end {}", THREAD_TEST_COUNT);
     });
 
