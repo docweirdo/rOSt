@@ -3,7 +3,6 @@
 #![feature(alloc_error_handler)]
 #![feature(naked_functions)]
 #![feature(asm)]
-#![feature(destructuring_assignment)]
 
 extern crate alloc;
 
@@ -12,11 +11,11 @@ use log::error;
 
 mod allocator;
 mod dbgu;
-mod exceptions;
+mod exception_handlers;
 mod fmt;
 mod helpers;
 mod interrupt_controller;
-mod interrupt_handler;
+mod interrupt_handlers;
 mod logger;
 mod memory;
 mod processor;

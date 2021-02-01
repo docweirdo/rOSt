@@ -2,6 +2,9 @@ use alloc::boxed::Box;
 use num_enum::IntoPrimitive;
 use num_enum::TryFromPrimitive;
 
+/// syscall calling convention
+/// syscall id via swi assembly and r0-r2 are used for possible arguments 
+
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u32)]
 pub enum Syscalls {

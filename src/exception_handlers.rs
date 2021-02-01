@@ -16,6 +16,12 @@ unsafe extern "C" fn UndefinedInstruction(lr: usize) {
     panic!("undefined instruction at {:#X}", lr - 4);
 }
 
+/// Gets called when a softwareinterrupt is triggered.  
+///
+/// This Handler extracts up to three arguments and the ID  
+/// of the swi type from registers r0-r4. Depending on   
+/// the type of software interrupt, the corresponding routine  
+/// from [syscall_handlers.rs](./syscall_handlers.rs) gets called by the `syscall_handler`. 
 #[rost_macros::exception]
 unsafe extern "C" fn SoftwareInterrupt(
     arg0: usize,

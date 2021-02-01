@@ -34,7 +34,7 @@ pub fn system_timer_period_interval_timer_elapsed() {
 pub fn dbgu_character_received() {
     assert!(processor::interrupts_enabled());
 
-    // dbgu_interrupt_handler,fires when rxready is set
+    // dbgu_interrupt_handlers,fires when rxready is set
     // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator
     let last_char =
         dbgu::read_char().expect("there should be a char available in dbgu interrupt") as u8;

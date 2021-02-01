@@ -1,5 +1,5 @@
 use crate::helpers::{read_register, write_register};
-use crate::interrupt_handler;
+use crate::interrupt_handlers;
 use crate::processor;
 use crate::system_timer;
 
@@ -44,10 +44,10 @@ pub fn init_system_interrupt() {
 #[rost_macros::interrupt]
 unsafe fn system_interrupt() {
     if system_timer::get_periodic_interrupts_enabled() && system_timer::has_system_timer_elapsed() {
-        interrupt_handler::system_timer_period_interval_timer_elapsed();
+        interrupt_handlers::system_timer_period_interval_timer_elapsed();
     }
     if super::dbgu::is_char_available() {
-        interrupt_handler::dbgu_character_received();
+        interrupt_handlers::dbgu_character_received();
     }
 }
 
