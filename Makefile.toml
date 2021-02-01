@@ -16,7 +16,7 @@ command = "usercode_c/build.sh"
 [tasks.qemu-usercode-c]
 command = "qemu-system-arm-portux-fork"
 args = ["-M", "portux920t", "-m", "64M", "-nographic", "-s", "-device",
-        "loader,file=usercode_c/target/usercode_c.o,addr=0x21000000", "-kernel", "target/armv4t-none-eabi/debug/rost"]
+        "loader,file=usercode_c/target/usercode_c.o", "-kernel", "target/armv4t-none-eabi/debug/rost"]
 
 [tasks.run-usercode-c]
 dependencies = [
@@ -32,7 +32,7 @@ args = ["build", "--manifest-path","usercode_rust/Cargo.toml"]
 [tasks.qemu-usercode-rust]
 command = "qemu-system-arm-portux-fork"
 args = ["-M", "portux920t", "-m", "64M", "-nographic", "-s", "-device",
-        "loader,file=usercode_rust/target/armv4t-none-eabi/debug/rost-user,addr=0x21000000", "-kernel", "target/armv4t-none-eabi/debug/rost"]
+        "loader,file=usercode_rust/target/armv4t-none-eabi/debug/rost-user", "-kernel", "target/armv4t-none-eabi/debug/rost"]
 
 [tasks.run-usercode-rust]
 dependencies = [

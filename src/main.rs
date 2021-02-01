@@ -11,13 +11,15 @@ use log::error;
 
 mod allocator;
 mod dbgu;
-mod exceptions;
+mod exception_handlers;
 mod fmt;
 mod helpers;
 mod interrupt_controller;
+mod interrupt_handlers;
 mod logger;
 mod memory;
 mod processor;
+mod syscall_handlers;
 mod system_timer;
 mod threads;
 mod user_tasks;
@@ -97,9 +99,11 @@ pub unsafe extern "C" fn _start() -> ! {
 ///
 /// TODO: Add detailed description
 pub fn boot() {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
-    debug_assert!(!processor::interrupts_enabled());
     memory::toggle_memory_remap(); // blend sram to 0x0 for IVT
+    allocator::init_allocator(); // init allocator before print allocations
+
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(!processor::interrupts_enabled());
 
     println!(
         "{} {}: the start",
@@ -112,57 +116,16 @@ pub fn boot() {
     // Initialize needed interrupts
 
     // set the wanted interval for the system timer
-    system_timer::init_system_timer_interrupt(1000);
-    system_timer::set_real_time_timer_interval(0x64);
+    system_timer::init_system_timer_interrupt(core::time::Duration::from_millis(10));
+    system_timer::set_real_time_timer_interval(core::time::Duration::from_millis(10));
     dbgu::set_dbgu_recv_interrupt(true);
-    interrupt_controller::init_system_interrupt(
-        || {
-            debug_assert!(processor::interrupts_enabled());
-
-            // sys_timer_interrrupt_handler
-            // print ! if task3 app is active
-            // TODO: do not forget to remove both
-            if unsafe { user_tasks::TASK3_ACTIVE } {
-                println!("!");
-            }
-            if unsafe { user_tasks::TASK4_ACTIVE } {
-                print!("!");
-            }
-
-            interrupt_controller::mark_end_of_interrupt!();
-
-            threads::wakeup_elapsed_threads();
-
-            unsafe {
-                if threads::SCHEDULER_INTERVAL_COUNTER == 0 {
-                    threads::schedule(None);
-                } else {
-                    threads::SCHEDULER_INTERVAL_COUNTER -= 1;
-                }
-            }
-        },
-        move || unsafe {
-            // debug_assert!(processor::interrupts_enabled());
-
-            // dbgu_interrupt_handler,fires when rxready is set
-            // push char into variable dbgu_buffer on heap, if app does not fetch -> out-of-memory error in allocator
-            let last_char =
-                dbgu::read_char().expect("there should be char availabe in interrupt") as u8;
-
-            dbgu::DBGU_BUFFER.push(last_char as char);
-
-            // TODO: do not forget to remove
-            user_tasks::task4_dbgu(last_char as char);
-
-            interrupt_controller::mark_end_of_interrupt!();
-        },
-    );
+    interrupt_controller::init_system_interrupt();
 
     processor::set_interrupts_enabled!(true);
 
     fn start_thread() {
-        debug_assert!(processor::ProcessorMode::User == processor::get_processor_mode());
-        debug_assert!(processor::interrupts_enabled());
+        assert!(processor::ProcessorMode::User == processor::get_processor_mode());
+        assert!(processor::interrupts_enabled());
 
         rost_api::syscalls::create_thread(user_tasks::read_eval_print_loop);
         // syscalls::create_thread(custom_user_code_thread);

@@ -14,7 +14,6 @@ enum Exception {
     SoftwareInterrupt,
     PrefetchAbort,
     DataAbort,
-    Interrupt,
 }
 
 #[proc_macro_attribute]
@@ -37,7 +36,6 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
         "UndefinedInstruction" => Exception::UndefinedInstruction,
         "PrefetchAbort" => Exception::PrefetchAbort,
         "DataAbort" => Exception::DataAbort,
-        "Interrupt" => Exception::Interrupt,
         _ => {
             return parse::Error::new(ident.span(), "This is not a valid exception name")
                 .to_compile_error()
@@ -47,8 +45,8 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut valid_signature = f.sig.constness.is_none()
         && f.vis == Visibility::Inherited
-        && f.sig.abi.is_none()
-        && f.sig.inputs.is_empty()
+        // && f.sig.abi.is_none()
+        //&& f.sig.inputs.is_empty()
         && f.sig.generics.params.is_empty()
         && f.sig.generics.where_clause.is_none()
         && f.sig.variadic.is_none();
@@ -93,34 +91,27 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
     let tramp_ident = Ident::new(&format!("{}_trampoline", f.sig.ident), Span::call_site());
     let ident = &f.sig.ident;
 
-    let use_nested_interrupt;
-    let mark_end_of_interrupt;
-    let dont_restore_registers;
+    let use_nested_interrupt = false;
     let lr_size;
 
     match exn {
-        Exception::Interrupt => {
-            use_nested_interrupt = true;
-            mark_end_of_interrupt = true;
-            dont_restore_registers = false;
-            lr_size = 4;
-        }
         Exception::SoftwareInterrupt => {
-            use_nested_interrupt = false;
-            mark_end_of_interrupt = false;
-            dont_restore_registers = true;
-            lr_size = 0;
+            return quote!(
+                #[naked]
+                #[no_mangle]
+                #[doc(hidden)]
+                #[export_name = #ident_s]
+                pub unsafe extern "C" fn #tramp_ident() {
+                    processor::exception_routine!(subroutine=#ident, software_interrupt=true);
+                }
+                #f
+            )
+            .into();
         }
         Exception::UndefinedInstruction | Exception::Reset => {
-            use_nested_interrupt = false;
-            mark_end_of_interrupt = false;
-            dont_restore_registers = false;
             lr_size = 0;
         }
         Exception::PrefetchAbort | Exception::DataAbort => {
-            use_nested_interrupt = false;
-            mark_end_of_interrupt = false;
-            dont_restore_registers = true;
             lr_size = 4;
         }
     }
@@ -131,7 +122,62 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
         #[doc(hidden)]
         #[export_name = #ident_s]
         pub unsafe extern "C" fn #tramp_ident() {
-            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt, mark_end_of_interrupt=#mark_end_of_interrupt, dont_restore_registers=#dont_restore_registers);
+            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt);
+        }
+
+        #f
+    )
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn interrupt(args: TokenStream, input: TokenStream) -> TokenStream {
+    let f = parse_macro_input!(input as ItemFn);
+
+    if !args.is_empty() {
+        return parse::Error::new(Span::call_site(), "This attribute accepts no arguments")
+            .to_compile_error()
+            .into();
+    }
+
+    let fspan = f.span();
+
+    let valid_signature = f.sig.constness.is_none()
+        && f.vis == Visibility::Inherited
+        && f.sig.abi.is_none()
+        && f.sig.inputs.is_empty()
+        && f.sig.generics.params.is_empty()
+        && f.sig.generics.where_clause.is_none()
+        && f.sig.variadic.is_none();
+    &&match f.sig.output {
+        ReturnType::Default => true,
+        ReturnType::Type(_, ref ty) => match **ty {
+            Type::Tuple(ref tuple) => tuple.elems.is_empty(),
+            Type::Never(..) => true,
+            _ => false,
+        },
+    };
+
+    if !valid_signature {
+        return parse::Error::new(
+            fspan,
+            "`#[interrupt]` handlers must have signature `[unsafe] fn() [-> !]`",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let tramp_ident = Ident::new(&format!("{}_trampoline", f.sig.ident), Span::call_site());
+    let ident = &f.sig.ident;
+
+    let use_nested_interrupt = true;
+    let lr_size = 4;
+
+    quote!(
+        #[naked]
+        #[doc(hidden)]
+        pub unsafe extern "C" fn #tramp_ident() {
+            processor::exception_routine!(subroutine=#ident, lr_size=#lr_size, nested_interrupt=#use_nested_interrupt);
         }
 
         #f

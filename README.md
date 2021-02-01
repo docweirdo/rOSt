@@ -29,14 +29,9 @@ This is a project for university containing bits and pieces of what might become
     * https://github.com/Amanieu/rfcs/blob/inline-asm/text/0000-inline-asm.md
 
 ### Todo:
-* fix release compilation
-* implement proper allocator
+* replace external allocator with own
 * implement correct differentiation for system interrupt handler (line 1)
 * document every important function, macro or variable
-* Configure system clocks and implement usage
 * make syscalls language agnostic (c callable)
-* implement sleep
-* think about structure of current interrupt closures
-* explore possibilty of providing interrupt-hooks to call customized closures
 * look into thread signaling and signal handlers
 * look into struct assiociated methods for TCB instead of direct access or functions

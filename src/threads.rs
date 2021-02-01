@@ -1,27 +1,31 @@
 use crate::system_timer;
 
 use super::processor;
+use crate::alloc::borrow::ToOwned;
 use alloc::{alloc::alloc, alloc::dealloc, boxed::Box};
-use alloc::{collections::btree_set::BTreeSet, vec::Vec};
-use core::{alloc::Layout, debug_assert, panic};
-use log::debug;
+use alloc::{
+    collections::btree_map::BTreeMap, collections::btree_set::BTreeSet,
+    collections::vec_deque::VecDeque, vec::Vec,
+};
+use core::{alloc::Layout, panic};
+use log::trace;
 
 const THREAD_STACK_SIZE: usize = 1024 * 8;
-const IDLE_THREAD_ID: usize = 0;
+const IDLE_THREAD_ID: ThreadId = 0;
 /// The amount of SysTicks before the scheduler gets called.
 pub(crate) static SCHEDULER_INTERVAL: u32 = 5;
 pub(crate) static mut SCHEDULER_INTERVAL_COUNTER: u32 = 0;
 
 #[repr(C, align(4))]
 pub struct TCB {
-    pub id: usize,
+    pub id: ThreadId,
     pub(crate) state: ThreadState,
     entry: Box<dyn FnMut() + 'static>,
     stack_current: *mut u8,
     stack_start: *mut u8,
-    pub(crate) parent_thread_id: usize,
-    pub(crate) wakeup_timestamp: Option<usize>,
-    pub(crate) joined_thread_ids: BTreeSet<usize>,
+    pub(crate) parent_thread_id: ThreadId,
+    pub(crate) subscribed_services:
+        BTreeMap<rost_api::syscalls::ThreadServices, VecDeque<ThreadMessage>>,
 }
 
 impl Drop for TCB {
@@ -38,14 +42,29 @@ impl Drop for TCB {
 }
 
 pub static mut THREADS: Vec<TCB> = Vec::<TCB>::new();
-static mut RUNNING_THREAD_ID: usize = 0;
-static mut LAST_THREAD_ID: usize = 0;
+static mut RUNNING_THREAD_ID: ThreadId = 0;
+static mut LAST_THREAD_ID: ThreadId = 0;
+
+type TimeoutValue = usize;
+type ThreadId = usize;
+
+#[derive(PartialEq, Eq, Debug)]
+pub(crate) enum ThreadMessage {
+    DBGU(char),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub(crate) enum WaitingReason {
+    DBGU,
+    Sleep(TimeoutValue),
+    Join(BTreeSet<ThreadId>, Option<TimeoutValue>),
+}
 
 #[derive(PartialEq, Eq, Debug)]
 pub(crate) enum ThreadState {
     Ready,
     Running,
-    Waiting,
+    Waiting(WaitingReason),
     Stopped,
 }
 
@@ -54,38 +73,35 @@ pub fn init_runtime<F>(entry: F) -> !
 where
     F: FnMut() + 'static,
 {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
 
     unsafe {
         THREADS.reserve(24);
     }
 
     fn idle_thread() {
-        crate::println!("idle thread");
+        trace!("executing idle thread");
         loop {
             unsafe {
                 // wait for interrupt low power mode
                 asm!(
-                    "mov r0, 0
-                     mcr p15, 0, r0, c7, c0, 4"
-                );
+                    "mov {tmp}, 0
+                     mcr p15, 0, {tmp}, c7, c0, 4"
+                , tmp = out(reg) _);
             }
         }
     }
 
     let id = create_thread_internal(Box::new(idle_thread));
-    debug_assert!(id == IDLE_THREAD_ID);
-    debug_assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
+    assert!(id == IDLE_THREAD_ID);
+    assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
 
     let id = create_thread_internal(Box::new(entry));
-    debug_assert!(id == 1);
-    debug_assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
+    assert!(id == 1);
+    assert!(get_thread_by_id(id).unwrap().parent_thread_id == IDLE_THREAD_ID);
     unsafe {
         RUNNING_THREAD_ID = id;
-        let thread = THREADS
-            .iter_mut()
-            .find(|t| t.id == RUNNING_THREAD_ID)
-            .unwrap();
+        let thread = get_current_thread();
         thread.state = ThreadState::Running;
         thread.stack_current = thread.stack_start;
 
@@ -102,17 +118,16 @@ pub fn print_threads() {
         crate::println!("threads:");
         for thread in &THREADS {
             crate::println!(
-                "  id: {} state: {:?} last_stack_size: {:#X} timestamp: {:?} joined_thread_ids: {:?}",
+                "  id: {} state: {:?} last_stack_size: {:#X}",
                 thread.id,
                 thread.state,
                 thread.stack_start.offset_from(thread.stack_current) as u32,
-                thread.wakeup_timestamp,
-                thread.joined_thread_ids
             );
         }
     }
 }
 
+/// returns running thread
 pub fn get_current_thread<'a>() -> &'a mut TCB {
     unsafe {
         THREADS
@@ -122,20 +137,9 @@ pub fn get_current_thread<'a>() -> &'a mut TCB {
     }
 }
 
+/// returns thread for given id or None if not found
 pub fn get_thread_by_id<'a>(thread_id: usize) -> Option<&'a mut TCB> {
     unsafe { THREADS.iter_mut().find(|t| t.id == thread_id) }
-}
-
-pub fn is_thread_done(id: usize) -> bool {
-    unsafe {
-        let thread = THREADS.iter().find(|t| t.id == id);
-        if let Some(thread) = thread {
-            if thread.state == ThreadState::Running || thread.state == ThreadState::Ready {
-                return false;
-            }
-        }
-        true
-    }
 }
 
 /// Prepares newly created threads for lifes challenges.   
@@ -145,18 +149,14 @@ pub fn is_thread_done(id: usize) -> bool {
 /// and switches the processor to `ProcessorMode::User`. Then calls the  
 /// users closure and provides an `exit_thread()` guard beneath.  
 unsafe extern "C" fn new_thread_entry() {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     processor::set_interrupts_enabled!(true);
     // run idle thread in system mode for low power mode
     if RUNNING_THREAD_ID > 0 {
         processor::switch_processor_mode!(processor::ProcessorMode::User);
     }
 
-    (THREADS
-        .iter_mut()
-        .find(|t| t.id == RUNNING_THREAD_ID)
-        .unwrap()
-        .entry)();
+    (get_current_thread().entry)();
     rost_api::syscalls::exit_thread();
 }
 
@@ -169,7 +169,7 @@ unsafe extern "C" fn new_thread_entry() {
 /// the address which gets popped into the Link Register pointing
 /// to `new_thread_entry()`.
 pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         let id = LAST_THREAD_ID;
         LAST_THREAD_ID += 1;
@@ -191,8 +191,7 @@ pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
             stack_current: stack_start,
             stack_start,
             entry,
-            wakeup_timestamp: None,
-            joined_thread_ids: BTreeSet::new(),
+            subscribed_services: BTreeMap::new(),
         };
 
         tcb.stack_current = tcb.stack_current.offset(15 * -4);
@@ -213,23 +212,20 @@ pub fn create_thread_internal(entry: Box<dyn FnMut() + 'static>) -> usize {
 
 /// Function called by the Kernel to set the running thread to `ThreadState::Stopped`.
 pub fn exit_internal() {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
-        THREADS
-            .iter_mut()
-            .find(|t| t.id == RUNNING_THREAD_ID)
-            .unwrap()
-            .state = ThreadState::Stopped;
+        let current_thread = get_current_thread();
+        current_thread.state = ThreadState::Stopped;
 
-        // mark all waiting (joined) threads as ready
-        for thread in &mut THREADS {
-            if thread.state != ThreadState::Waiting || thread.joined_thread_ids.is_empty() {
-                continue;
-            }
-            let present = thread.joined_thread_ids.remove(&RUNNING_THREAD_ID);
-            if present && thread.joined_thread_ids.is_empty() {
-                thread.state = ThreadState::Ready;
-                thread.wakeup_timestamp = None;
+        // remove id from joined parent thread if available
+        if let Some(parent_thread) = get_thread_by_id(current_thread.parent_thread_id) {
+            if let ThreadState::Waiting(WaitingReason::Join(joined_thread_ids, _)) =
+                &mut parent_thread.state
+            {
+                let present = joined_thread_ids.remove(&RUNNING_THREAD_ID);
+                if present && joined_thread_ids.is_empty() {
+                    parent_thread.state = ThreadState::Ready;
+                }
             }
         }
     }
@@ -241,17 +237,37 @@ pub fn wakeup_elapsed_threads() {
         let current_timestamp = system_timer::get_current_real_time() as usize;
         // find waiting thread with elapsed timestamp
         let thread = THREADS.iter_mut().find(|t| {
-            t.state == ThreadState::Waiting
-                && t.wakeup_timestamp.is_some()
-                && t.wakeup_timestamp.unwrap() <= current_timestamp
+            if let ThreadState::Waiting(WaitingReason::Sleep(wakeup_timestamp)) = t.state {
+                if wakeup_timestamp <= current_timestamp {
+                    return true;
+                }
+            }
+            false
         });
 
         // found waiting thread with elapsed timestamp -> schedule
         if let Some(thread) = thread {
             thread.state = ThreadState::Ready;
-            thread.wakeup_timestamp = None;
-            thread.joined_thread_ids.clear();
             schedule(Some(thread.id));
+        }
+    }
+}
+
+pub fn handle_dbgu_new_character_event(character: char) {
+    unsafe {
+        for thread in &mut THREADS {
+            if let Some(messages) = thread
+                .subscribed_services
+                .get_mut(&rost_api::syscalls::ThreadServices::DBGU)
+            {
+                messages.push_back(ThreadMessage::DBGU(character));
+            }
+            if let ThreadState::Waiting(WaitingReason::DBGU) = thread.state {
+                debug_assert!(thread
+                    .subscribed_services
+                    .contains_key(&rost_api::syscalls::ThreadServices::DBGU));
+                thread.state = ThreadState::Ready;
+            }
         }
     }
 }
@@ -263,7 +279,7 @@ pub fn wakeup_elapsed_threads() {
 /// calls `switch_thread` to switch to the selected thread.  
 /// TCBs and Stacks of threads with `ThreadState::Stopped` are removed.
 pub fn schedule(next_thread_id: Option<usize>) {
-    debug_assert!(processor::ProcessorMode::System == processor::get_processor_mode());
+    assert!(processor::ProcessorMode::System == processor::get_processor_mode());
     unsafe {
         if THREADS.is_empty() {
             log::error!("scheduler called before thread initialization");
@@ -313,22 +329,21 @@ pub fn schedule(next_thread_id: Option<usize>) {
                 if next_thread_pos == running_thread_pos {
                     // no other thread ready and this thread is stopped or waiting
                     // then switch to the idle thread
-                    if running_thread.state == ThreadState::Stopped
-                        || running_thread.state == ThreadState::Waiting
-                    {
-                        next_thread_pos = 0;
-                        break;
-                    } else {
-                        // else stay in the same thread
-                        return;
+                    match running_thread.state {
+                        ThreadState::Waiting(_) | ThreadState::Stopped => {
+                            next_thread_pos = 0;
+                            break;
+                        }
+                        _ => {
+                            // else stay in the same thread
+                            return;
+                        }
                     }
                 }
             }
         }
         let next_thread = &mut THREADS[next_thread_pos];
-        debug_assert!(next_thread.state == ThreadState::Ready);
-        debug_assert!(next_thread.wakeup_timestamp == None);
-        debug_assert!(next_thread.joined_thread_ids.is_empty());
+        assert!(next_thread.state == ThreadState::Ready);
 
         next_thread.state = ThreadState::Running;
         // only switch back old thread to ready if not waiting or stopped
@@ -337,7 +352,20 @@ pub fn schedule(next_thread_id: Option<usize>) {
         }
         RUNNING_THREAD_ID = next_thread.id;
 
-        debug!(
+        if crate::user_tasks::TASK4_ACTIVE {
+            let convert = |id| match id {
+                0 => "idle".to_owned(),
+                2 => "repl".to_owned(),
+                _ => alloc::format!("{}", id),
+            };
+            crate::println!(
+                " {} -> {}",
+                convert(running_thread.id),
+                convert(next_thread.id)
+            );
+        }
+
+        log::trace!(
             "t#: {} switch thread from {} sp:{:#X} to {} sp:{:#X}",
             THREADS.len(),
             running_thread.id,
@@ -367,6 +395,7 @@ pub fn schedule(next_thread_id: Option<usize>) {
 /// and returns to the now different instruction pointed to by the
 /// Link Register.
 #[naked]
+#[inline(never)]
 unsafe extern "C" fn switch_thread(_running_thread: &*mut u8, _current_thread: &*mut u8) {
     asm!(
         "push {{r0-r12}}
