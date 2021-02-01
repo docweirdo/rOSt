@@ -20,6 +20,7 @@ mod interrupt_handler;
 mod logger;
 mod memory;
 mod processor;
+mod syscall_handlers;
 mod system_timer;
 mod threads;
 mod user_tasks;

@@ -122,10 +122,6 @@ pub fn read_eval_print_loop() {
             });
         }
 
-        run_thread('A');
-        run_thread('B');
-        run_thread('c');
-
         rost_api::syscalls::subscribe(rost_api::syscalls::ThreadServices::DBGU);
         loop {
             let last_char = rost_api::syscalls::receive_character_from_dbgu() as char;
