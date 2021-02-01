@@ -17,7 +17,12 @@ unsafe extern "C" fn UndefinedInstruction(lr: usize) {
 }
 
 #[rost_macros::exception]
-unsafe extern "C" fn SoftwareInterrupt(arg0: usize, arg1: usize, arg2: usize, service_id: usize) -> usize {
+unsafe extern "C" fn SoftwareInterrupt(
+    arg0: usize,
+    arg1: usize,
+    arg2: usize,
+    service_id: usize,
+) -> usize {
     trace!(
         "software interrupt handler {} {} {} {}",
         arg0,

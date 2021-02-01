@@ -98,7 +98,7 @@ pub fn read_eval_print_loop() {
     add_command("task5", || {
         /// wait for x realtime clock units
         fn busy_wait_ms(mut units: usize) {
-            units = units / system_timer::get_real_time_unit_interval().as_millis() as usize;
+            units /= system_timer::get_real_time_unit_interval().as_millis() as usize;
             let last = rost_api::syscalls::get_current_realtime();
             loop {
                 if rost_api::syscalls::get_current_realtime() - last >= units {

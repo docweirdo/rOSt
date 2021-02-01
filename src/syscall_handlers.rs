@@ -97,8 +97,8 @@ fn get_current_real_time() -> usize {
 fn subscribe_thread_service(service_id: usize) -> usize {
     trace!("syscall: Subscribe");
     let current_tcb = threads::get_current_thread();
-    let service =
-        rost_api::syscalls::ThreadServices::try_from(service_id as u32).expect("invalid service given");
+    let service = rost_api::syscalls::ThreadServices::try_from(service_id as u32)
+        .expect("invalid service given");
 
     if current_tcb
         .subscribed_services
@@ -116,7 +116,8 @@ fn subscribe_thread_service(service_id: usize) -> usize {
 fn unsubscribe_thread_service(service_id: usize) -> usize {
     trace!("syscall: Unsubscribe");
     let current_tcb = threads::get_current_thread();
-    let service = rost_api::syscalls::ThreadServices::try_from(service_id as u32).expect("invalid service given");
+    let service = rost_api::syscalls::ThreadServices::try_from(service_id as u32)
+        .expect("invalid service given");
 
     if current_tcb.subscribed_services.remove(&service) == None {
         panic!(
@@ -132,7 +133,8 @@ fn sleep(time_ms: usize) -> usize {
     let current_time = system_timer::get_current_real_time() as usize;
     let current_tcb = threads::get_current_thread();
 
-    let time_in_realtime_units: usize = time_ms / system_timer::get_real_time_unit_interval().as_millis() as usize;
+    let time_in_realtime_units: usize =
+        time_ms / system_timer::get_real_time_unit_interval().as_millis() as usize;
 
     current_tcb.state = threads::ThreadState::Waiting(threads::WaitingReason::Sleep(
         current_time + time_in_realtime_units,
